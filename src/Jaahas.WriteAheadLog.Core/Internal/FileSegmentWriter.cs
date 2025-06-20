@@ -132,12 +132,10 @@ internal sealed partial class FileSegmentWriter : SegmentWriter {
         LogAfterWriteMessage(sequenceId, timestamp, bytesWritten);
         WriteMemoryMappedHeader();
         
+        Interlocked.Exchange(ref _tailFlushRequired, 1);
         if (_flushBatchSize > 0 && Header.MessageCount % _flushBatchSize == 0) {
             // Immediate flush if batch size is reached.
             await FlushCoreAsync().ConfigureAwait(false);
-        }
-        else {
-            Interlocked.Exchange(ref _tailFlushRequired, 1);
         }
         
         return bytesWritten;

@@ -61,4 +61,28 @@ public class LogOptions {
     /// </summary>
     public TimeSpan ReadPollingInterval { get; set; } = TimeSpan.FromMilliseconds(500);
 
+    /// <summary>
+    /// The interval at which old WAL segment files will be checked and cleaned up.
+    /// </summary>
+    /// <remarks>
+    ///   Specifying a value less than or equal to <see cref="TimeSpan.Zero"/> disables periodic cleanup.
+    /// </remarks>
+    public TimeSpan CleanupInterval { get; set; } = TimeSpan.FromHours(1);
+
+    /// <summary>
+    /// The maximum age for a WAL segment file before it is eligible for deletion.
+    /// </summary>
+    /// <remarks>
+    ///   Specifying a value less than or equal to <see cref="TimeSpan.Zero"/> disables age-based cleanup.
+    /// </remarks>
+    public TimeSpan SegmentRetentionPeriod { get; set; } = TimeSpan.FromDays(7);
+
+    /// <summary>
+    /// The maximum number of WAL segment files to retain. Older segments will be deleted if this count is exceeded.
+    /// </summary>
+    /// <remarks>
+    ///   Specifying a value less than or equal to zero disables count-based cleanup.
+    /// </remarks>
+    public int MaxSegmentCount { get; set; } = 0;
+
 }

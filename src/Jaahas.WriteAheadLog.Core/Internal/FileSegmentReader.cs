@@ -3,6 +3,8 @@ using System.Runtime.CompilerServices;
 
 using Microsoft.Extensions.Logging;
 
+using Nito.AsyncEx;
+
 namespace Jaahas.WriteAheadLog.Internal;
 
 /// <summary>
@@ -136,7 +138,7 @@ internal sealed partial class FileSegmentReader : SegmentReader {
         
         var pipeReader = PipeReader.Create(stream, new StreamPipeReaderOptions(leaveOpen: true));
         
-        await foreach (var item in ReadLogEntriesAsync(pipeReader, cancellationToken)) {
+        await foreach (var item in ReadLogEntriesAsync(pipeReader, cancellationToken).ConfigureAwait(false)) {
             yield return item;
         }
     }
@@ -156,7 +158,12 @@ internal sealed partial class FileSegmentReader : SegmentReader {
     /// </param>
     /// <param name="watchForChanges">
     ///   If <see langword="true"/>, the reader will watch for changes in the file and continue
-    ///   reading new entries as they are added.
+    ///   reading new entries as they are added. Changes are detected using a polling mechanism
+    ///   that examines the length of the file at regular intervals.
+    /// </param>
+    /// <param name="pollingInterval">
+    ///   The interval at which to poll the file for changes when <paramref name="watchForChanges"/>
+    ///   is <see langword="true"/>. The default polling interval is 500 milliseconds.
     /// </param>
     /// <param name="cancellationToken">
     ///   The cancellation token for the operation.
@@ -176,7 +183,7 @@ internal sealed partial class FileSegmentReader : SegmentReader {
     /// </list>
     /// 
     /// </remarks>
-    public async IAsyncEnumerable<LogEntry> ReadLogEntriesAsync(string filePath, long offset, SeekOrigin origin, bool watchForChanges, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
+    public async IAsyncEnumerable<LogEntry> ReadLogEntriesAsync(string filePath, long offset, SeekOrigin origin, bool watchForChanges, TimeSpan? pollingInterval = null, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
         if (!watchForChanges) {
             await foreach (var item in ReadLogEntriesAsync(filePath, offset, origin, cancellationToken)) {
                 yield return item;
@@ -186,30 +193,18 @@ internal sealed partial class FileSegmentReader : SegmentReader {
         
         LogReadingEntries(filePath, offset, origin, true);
         
-        var changesDetected = new Nito.AsyncEx.AsyncAutoResetEvent();
         var file = new FileInfo(filePath);
-        using var watcher = new FileSystemWatcher(file.Directory!.FullName, file.Name);
+        if (!file.Exists) {
+            yield break;
+        }
         
-        watcher.Changed += (_, args) => {
-            if (!args.FullPath.Equals(filePath, StringComparison.OrdinalIgnoreCase)) {
-                return;
-            }
-            changesDetected.Set();
-        };
-        
-        watcher.Deleted += (_, args) => {
-            if (!args.FullPath.Equals(filePath, StringComparison.OrdinalIgnoreCase)) {
-                return;
-            }
-            changesDetected.Set();
-        };
-
-        watcher.EnableRaisingEvents = true;
+        using var changeDetector = new ChangeDetector(file, pollingInterval);
         
         while (!cancellationToken.IsCancellationRequested) {
             file.Refresh();
+            
             if (!file.Exists) {
-                yield break; // File does not exist or has been deleted.
+                yield break;
             }
 
             // If the file is read-only, we assume it's the final iteration because no more data
@@ -236,12 +231,74 @@ internal sealed partial class FileSegmentReader : SegmentReader {
                 break;
             }
             
-            await changesDetected.WaitAsync(cancellationToken).ConfigureAwait(false);
+            await changeDetector.ChangesDetected.WaitAsync(cancellationToken).ConfigureAwait(false);
         }
     }
     
     
     [LoggerMessage(200, LogLevel.Trace, "Reading entries from '{filePath}: offset = {offset}/{origin}, watch for changes = {watchForChanges}")]
     partial void LogReadingEntries(string filePath, long offset, SeekOrigin origin, bool watchForChanges);
+
+
+    private class ChangeDetector : IDisposable {
+        
+        private bool _disposed;
+
+        private readonly FileInfo _file;
+        
+        private readonly TimeSpan _pollingInterval;
+        
+        private readonly CancellationTokenSource _cancellationTokenSource = new CancellationTokenSource();
+        
+        public AsyncAutoResetEvent ChangesDetected { get; } = new AsyncAutoResetEvent();
+
+
+        public ChangeDetector(FileInfo file, TimeSpan? pollingInterval) {
+            _file = file;
+            _pollingInterval = pollingInterval.HasValue && pollingInterval.Value > TimeSpan.Zero 
+                ? pollingInterval.Value 
+                : TimeSpan.FromMilliseconds(500);
+            _ = RunAsync(_cancellationTokenSource.Token);
+        }
+
+
+        private async Task RunAsync(CancellationToken cancellationToken) {
+            try {
+                var length = _file.Length;
+                while (!cancellationToken.IsCancellationRequested) {
+                    await Task.Delay(_pollingInterval, cancellationToken).ConfigureAwait(false);
+                    
+                    _file.Refresh();
+                    
+                    if (!_file.Exists || _file.IsReadOnly) {
+                        break;
+                    }
+                    
+                    //System.Diagnostics.Debug.WriteLine($"File '{_file.FullName}' length: {_file.Length}");
+
+                    if (_file.Length == length) {
+                        continue;
+                    }
+
+                    length = _file.Length;
+                    ChangesDetected.Set();
+                }
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) {}
+        }
+        
+
+        public void Dispose() {
+            if (_disposed) {
+                return;
+            }
+            
+            _cancellationTokenSource.Cancel();
+            _cancellationTokenSource.Dispose();
+            
+            _disposed = true;
+        }
+
+    }
 
 }

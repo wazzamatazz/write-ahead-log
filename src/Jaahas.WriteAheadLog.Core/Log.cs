@@ -12,9 +12,29 @@ using Microsoft.IO;
 namespace Jaahas.WriteAheadLog;
 
 /// <summary>
-/// <see cref="Log"/> is a write-ahead log (WAL) implementation that provides a durable, append-only
+/// <see cref="Log"/> is a Write-Ahead Log (WAL) implementation that provides a durable, append-only
 /// log for storing messages.
 /// </summary>
+/// <remarks>
+///
+/// <para>
+///   The log must be initialized before any operations can be performed via <see cref="InitAsync"/>.
+/// </para>
+///
+/// <para>
+///   Use the <see cref="WriteAsync"/> method to write messages to the log. Incoming messages are
+///   defined using the <see cref="LogMessage"/> type. <see cref="LogMessage"/> makes extensive use
+///   of pooled buffers. Remember to dispose of <see cref="LogMessage"/> instances when they are no
+///   longer needed to ensure that the message's buffer is returned to the pool.
+/// </para>
+///
+/// <para>
+///   You can reuse the same <see cref="LogMessage"/> instance to write multiple messages by calling
+///   the <see cref="LogMessage.Reset"/> method to reset the underlying buffer after writing the
+///   message to the log.
+/// </para>
+/// 
+/// </remarks>
 public sealed partial class Log : IAsyncDisposable {
     
     /// <summary>
@@ -42,6 +62,16 @@ public sealed partial class Log : IAsyncDisposable {
     /// A cancellation token source that is used to signal when the log has been disposed.
     /// </summary>
     private readonly CancellationTokenSource _disposedTokenSource = new CancellationTokenSource();
+
+    /// <summary>
+    /// Specifies whether the log has been initialised.
+    /// </summary>
+    private bool _initialised;
+    
+    /// <summary>
+    /// Lock to ensure that only one initialization operation can occur at a time.
+    /// </summary>
+    private readonly Nito.AsyncEx.AsyncAutoResetEvent _initLock = new Nito.AsyncEx.AsyncAutoResetEvent(true);
     
     /// <summary>
     /// The time provider used to obtain the timestamp for log entries.
@@ -95,11 +125,6 @@ public sealed partial class Log : IAsyncDisposable {
     private readonly Nito.AsyncEx.AsyncLock _writeLock = new Nito.AsyncEx.AsyncLock();
     
     /// <summary>
-    /// Specifies whether the log has been initialised.
-    /// </summary>
-    private bool _initialised;
-    
-    /// <summary>
     /// In-progress read operations that are currently reading from the log.
     /// </summary>
     /// <remarks>
@@ -134,7 +159,10 @@ public sealed partial class Log : IAsyncDisposable {
         _loggerFactory = loggerFactory ?? Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance;
         _logger = logger ?? _loggerFactory.CreateLogger<Log>();
         
-        _dataDirectory = new DirectoryInfo(Path.IsPathRooted(_options.DataDirectory) ? _options.DataDirectory : Path.Combine(AppContext.BaseDirectory, _options.DataDirectory));
+        var dataDir = string.IsNullOrWhiteSpace(options.DataDirectory) 
+            ? "wal" 
+            : options.DataDirectory;
+        _dataDirectory = new DirectoryInfo(Path.IsPathRooted(dataDir) ? dataDir : Path.Combine(AppContext.BaseDirectory, dataDir));
     }
     
     
@@ -151,73 +179,29 @@ public sealed partial class Log : IAsyncDisposable {
         ObjectDisposedException.ThrowIf(_disposed, this);
         
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);
-        
-        using var handle = await _writeLock.LockAsync(cts.Token).ConfigureAwait(false);
-        using var segmentIndicesLockHandle = await _segmentIndicesLock.WriterLockAsync(cts.Token).ConfigureAwait(false);
-        
-        if (_initialised) {
-            return;
-        }
-
-        LogInitialising(_dataDirectory.FullName);
-        _dataDirectory.Create();
-        
-        var files = _dataDirectory.GetFiles("*.wal", SearchOption.TopDirectoryOnly);
-        if (files.Length == 0) {
-            _lastSequenceId = 0;
-            _initialised = true;
-            return;
-        }
-
-        // Move from newest to oldest segment files.
-        for (var i = files.Length - 1; i >= 0; i--) {
-            var file = files[i];
-            
-            if (!TryGetSegmentDetailsFromFileName(file, out var segmentName, out var originTime)) {
-                // The file does not match the expected naming convention.
-                continue;
-            }
-            
-            LogCheckingSegment(file.FullName);
-            var header = FileSegmentReader.ReadHeader(file.FullName);
-
-            if (header is null) {
-                LogInvalidSegmentHeader(file.FullName);
-                continue; // Skip invalid segment files
-            }
-            
-            if (header.LastSequenceId > _lastSequenceId) {
-                _lastSequenceId = header.LastSequenceId;
-            }
-            
-            if (header.LastTimestamp > _lastTimestamp) {
-                _lastTimestamp = header.LastTimestamp;
-            }
-
-            if (!header.ReadOnly) {
-                // This is our writable segment.
-                _writer ??= CreateFileSegmentWriter(
-                    segmentName,
-                    file.FullName, 
-                    GetSegmentExpiryTime(originTime));
-                _writerSegmentIndex = (MutableSegmentIndex) await BuildSegmentIndexAsync(header, file.FullName, cts.Token).ConfigureAwait(false);
-                LogSegmentLoaded(file.FullName, false, header.MessageCount, header.FirstSequenceId, header.LastSequenceId, header.FirstTimestamp, header.LastTimestamp);
-                continue;
-            }
-            
-            _readOnlySegmentIndices.Add(new SegmentIndexWrapper(file.FullName, await BuildSegmentIndexAsync(header, file.FullName, cts.Token).ConfigureAwait(false)));
-            LogSegmentLoaded(file.FullName, true, header.MessageCount, header.FirstSequenceId, header.LastSequenceId, header.FirstTimestamp, header.LastTimestamp);
-        }
-
-        _initialised = true;
+        await InitCoreAsync(cts.Token).ConfigureAwait(false);
     }
-
-
+    
+    
+    /// <summary>
+    /// Gets the current segments in the log.
+    /// </summary>
+    /// <param name="cancellationToken">
+    ///   The cancellation token for the operation.
+    /// </param>
+    /// <returns>
+    ///   A read-only list of <see cref="SegmentHeader"/> objects representing the segments in the
+    ///   log.
+    /// </returns>
+    /// <remarks>
+    ///   Calling this method will initialize the log if it has not already been initialized.
+    /// </remarks>
     public async ValueTask<IReadOnlyList<SegmentHeader>> GetSegmentsAsync(CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ThrowOnNotInitialised();
         
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);
+        await InitCoreAsync(cts.Token).ConfigureAwait(false);
+        
         using var handle = await _segmentIndicesLock.ReaderLockAsync(cts.Token).ConfigureAwait(false);
         
         var builder = ImmutableArray.CreateBuilder<SegmentHeader>();
@@ -249,15 +233,16 @@ public sealed partial class Log : IAsyncDisposable {
     /// <exception cref="ArgumentNullException">
     ///   <paramref name="message"/> is <see langword="null"/>.
     /// </exception>
-    /// <exception cref="InvalidOperationException">
-    ///   The log has not been initialized.
-    /// </exception>
+    /// <remarks>
+    ///   Calling this method will initialize the log if it has not already been initialized.
+    /// </remarks>
     public async ValueTask<WriteResult> WriteAsync(LogMessage message, CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(message);
-        ThrowOnNotInitialised();
-        
+
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);
+        await InitCoreAsync(cts.Token).ConfigureAwait(false);
+        
         using var handle = await _writeLock.LockAsync(cts.Token).ConfigureAwait(false);
         
         // Check if we need to roll over to a new segment.
@@ -289,14 +274,16 @@ public sealed partial class Log : IAsyncDisposable {
     /// <exception cref="ObjectDisposedException">
     ///   The log has been disposed.
     /// </exception>
-    /// <exception cref="InvalidOperationException">
-    ///   The log has not been initialized.
-    /// </exception>
     public async ValueTask FlushAsync(CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ThrowOnNotInitialised();
+
+        if (!_initialised) {
+            return;
+        }
         
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);
+        await InitCoreAsync(cts.Token).ConfigureAwait(false);
+        
         using var handle = await _writeLock.LockAsync(cts.Token).ConfigureAwait(false);
 
         if (_writer is null) {
@@ -316,79 +303,342 @@ public sealed partial class Log : IAsyncDisposable {
     /// <exception cref="ObjectDisposedException">
     ///   The log has been disposed.
     /// </exception>
-    /// <exception cref="InvalidOperationException">
-    ///   The log has not been initialized.
-    /// </exception>
     public async ValueTask RolloverAsync(CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ThrowOnNotInitialised();
-        
+
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);
+        await InitCoreAsync(cts.Token).ConfigureAwait(false);
+        
         using var handle = await _writeLock.LockAsync(cts.Token).ConfigureAwait(false);
         await RolloverCoreAsync(RolloverReason.Manual, cts.Token).ConfigureAwait(false);
     }
     
     
+    // /// <summary>
+    // /// Reads log entries starting from the specified sequence ID.
+    // /// </summary>
+    // /// <param name="sequenceId">
+    // ///   The sequence ID to start reading from. If less than 1, reading starts from the beginning
+    // ///   of the log.
+    // /// </param>
+    // /// <param name="watchForChanges">
+    // ///   When <see langword="true"/>, the operation will wait for new log entries to be added to
+    // ///   the latest segment when it reaches the end of the log stream. Otherwise, the operation
+    // ///   will complete when is reaches the end of the latest segment.
+    // /// </param>
+    // /// <param name="cancellationToken">
+    // ///   The cancellation token for the operation.
+    // /// </param>
+    // /// <returns>
+    // ///   A stream of <see cref="LogEntry"/> objects read from the log.
+    // /// </returns>
+    // /// <exception cref="ObjectDisposedException">
+    // ///   The log has been disposed.
+    // /// </exception>
+    // /// <remarks>
+    // ///   Calling this method will initialize the log if it has not already been initialized.
+    // /// </remarks>
+    // public async IAsyncEnumerable<LogEntry> ReadFromPositionAsync(ulong sequenceId = 0, bool watchForChanges = false, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
+    //     ObjectDisposedException.ThrowIf(_disposed, this);
+    //
+    //     if (sequenceId > _lastSequenceId) {
+    //         // After the last sequence ID, there are no messages to read.
+    //         yield break;
+    //     }
+    //     
+    //     ReadOperationStatus status;
+    //
+    //     using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);
+    //     await InitCoreAsync(cts.Token).ConfigureAwait(false);
+    //     
+    //     using (await _segmentIndicesLock.ReaderLockAsync(cts.Token).ConfigureAwait(false)) {
+    //         var segmentsToRead = new ConcurrentQueue<SegmentIndexWrapper>();
+    //         
+    //         foreach (var item in _readOnlySegmentIndices) {
+    //             if (sequenceId == 0 || item.Index.Header.LastSequenceId >= sequenceId) {
+    //                 segmentsToRead.Enqueue(item);
+    //             }
+    //         }
+    //
+    //         if (_writerSegmentIndex is not null && (sequenceId == 0 || _writerSegmentIndex.Header.LastSequenceId >= sequenceId)) {
+    //             segmentsToRead.Enqueue(new SegmentIndexWrapper(_writer!.FilePath, _writerSegmentIndex));
+    //         }
+    //         
+    //         if (segmentsToRead.IsEmpty && !watchForChanges) {
+    //             // No segments to read, so we can exit early.
+    //             yield break;
+    //         }
+    //         
+    //         status = new ReadOperationStatus(segmentsToRead, watchForChanges);
+    //         _readOperations[status.Id] = status;
+    //         
+    //         LogReadFromPosition(status.Id, sequenceId);
+    //     }
+    //
+    //     try {
+    //         var isFirstSegment = true;
+    //
+    //         while (!cts.IsCancellationRequested) {
+    //             await status.SegmentsAvailable.WaitAsync(cts.Token).ConfigureAwait(false);
+    //
+    //             while (status.Segments.TryDequeue(out var index)) {
+    //                 var offset = 0L;
+    //
+    //                 if (isFirstSegment) {
+    //                     // If this is the first matching segment, and we are seeking a specific sequence
+    //                     // ID, we can use the index entries to skip
+    //                     // ahead to the first message we are interested in.
+    //
+    //                     isFirstSegment = false;
+    //
+    //                     if (sequenceId > 0) {
+    //                         for (var i = 0; i < index.Index.Entries.Count; i++) {
+    //                             var entry = index.Index.Entries[i];
+    //                             if (entry.SequenceId < sequenceId) {
+    //                                 continue; // Skip entries that are before the requested sequence ID.
+    //                             }
+    //
+    //                             if (entry.SequenceId == sequenceId) {
+    //                                 // We found the first message we are interested in, so we can start reading from here.
+    //                                 offset = entry.Offset;
+    //                                 break;
+    //                             }
+    //
+    //                             // We've found an entry that is after the requested sequence ID; move back to the previous entry if possible.
+    //                             if (i > 0) {
+    //                                 offset = index.Index.Entries[i - 1].Offset;
+    //                             }
+    //
+    //                             break;
+    //                         }
+    //                     }
+    //                 }
+    //
+    //                 var watch = status.WatchForChanges && index.Index is MutableSegmentIndex;
+    //                 await foreach (var item in new FileSegmentReader(_loggerFactory.CreateLogger<FileSegmentReader>()).ReadLogEntriesAsync(index.FilePath, offset, SeekOrigin.Begin, watch, cts.Token).ConfigureAwait(false)) {
+    //                     if (item.SequenceId < sequenceId) {
+    //                         // Skip entries that are before the requested sequence ID.
+    //                         item.Dispose();
+    //                         continue;
+    //                     }
+    //                     yield return item;
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     finally {
+    //         _readOperations.TryRemove(status.Id, out _);
+    //     }
+    // }
+    //
+    //
+    // /// <summary>
+    // /// Reads log entries starting from the specified timestamp.
+    // /// </summary>
+    // /// <param name="timestamp">
+    // ///   The timestamp to start reading from. If less than 1, reading starts from the beginning
+    // ///   of the log.
+    // /// </param>
+    // /// <param name="watchForChanges">
+    // ///   When <see langword="true"/>, the operation will wait for new log entries to be added to
+    // ///   the latest segment when it reaches the end of the log stream. Otherwise, the operation
+    // ///   will complete when is reaches the end of the latest segment.
+    // /// </param>
+    // /// <param name="cancellationToken">
+    // ///   The cancellation token for the operation.
+    // /// </param>
+    // /// <returns>
+    // ///   A stream of <see cref="LogEntry"/> objects read from the log.
+    // /// </returns>
+    // /// <exception cref="ObjectDisposedException">
+    // ///   The log has been disposed.
+    // /// </exception>
+    // /// <remarks>
+    // ///   Calling this method will initialize the log if it has not already been initialized.
+    // /// </remarks>
+    // public async IAsyncEnumerable<LogEntry> ReadFromTimestampAsync(long timestamp = -1, bool watchForChanges = false, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
+    //     ObjectDisposedException.ThrowIf(_disposed, this);
+    //
+    //     if (timestamp > _lastTimestamp) {
+    //         // After the last timestamp, there are no messages to read.
+    //         yield break;
+    //     }
+    //
+    //     ReadOperationStatus status;
+    //     
+    //     using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);
+    //     await InitCoreAsync(cts.Token).ConfigureAwait(false);
+    //
+    //     using (await _segmentIndicesLock.ReaderLockAsync(cts.Token).ConfigureAwait(false)) {
+    //         var segmentsToRead = new ConcurrentQueue<SegmentIndexWrapper>();
+    //         
+    //         foreach (var item in _readOnlySegmentIndices) {
+    //             if (timestamp <= 0 || item.Index.Header.LastTimestamp >= timestamp) {
+    //                 segmentsToRead.Enqueue(item);
+    //             }
+    //         }
+    //
+    //         if (_writerSegmentIndex is not null && (timestamp <= 0 || _writerSegmentIndex.Header.LastTimestamp >= timestamp)) {
+    //             segmentsToRead.Enqueue(new SegmentIndexWrapper(_writer!.FilePath, _writerSegmentIndex));
+    //         }
+    //         
+    //         if (segmentsToRead.IsEmpty && !watchForChanges) {
+    //             // No segments to read, so we can exit early.
+    //             yield break;
+    //         }
+    //         
+    //         status = new ReadOperationStatus(segmentsToRead, watchForChanges);
+    //         _readOperations[status.Id] = status;
+    //         
+    //         LogReadFromTimestamp(status.Id, timestamp);
+    //     }
+    //
+    //     try {
+    //         var isFirstSegment = true;
+    //
+    //         while (!cts.IsCancellationRequested) {
+    //             await status.SegmentsAvailable.WaitAsync(cts.Token).ConfigureAwait(false);
+    //
+    //             while (status.Segments.TryDequeue(out var index)) {
+    //                 var offset = 0L;
+    //
+    //                 if (isFirstSegment) {
+    //                     // If this is the first matching segment, and we are seeking a specific sequence
+    //                     // ID, we can use the index entries to skip
+    //                     // ahead to the first message we are interested in.
+    //
+    //                     isFirstSegment = false;
+    //
+    //                     if (timestamp > 0) {
+    //                         for (var i = 0; i < index.Index.Entries.Count; i++) {
+    //                             var entry = index.Index.Entries[i];
+    //                             if (entry.Timestamp < timestamp) {
+    //                                 // Skip entries that are before the requested timestamp.
+    //                                 continue; 
+    //                             }
+    //
+    //                             if (entry.Timestamp == timestamp) {
+    //                                 // We found the first message we are interested in, so we can start reading from here.
+    //                                 offset = entry.Offset;
+    //                                 break;
+    //                             }
+    //
+    //                             // We've found an entry that is after the requested timestamp; move back to the previous entry if possible.
+    //                             if (i > 0) {
+    //                                 offset = index.Index.Entries[i - 1].Offset;
+    //                             }
+    //
+    //                             break;
+    //                         }
+    //                     }
+    //                 }
+    //
+    //                 var watch = status.WatchForChanges && index.Index is MutableSegmentIndex;
+    //                 await foreach (var item in new FileSegmentReader(_loggerFactory.CreateLogger<FileSegmentReader>()).ReadLogEntriesAsync(index.FilePath, offset, SeekOrigin.Begin, watch, cts.Token).ConfigureAwait(false)) {
+    //                     if (item.Timestamp < timestamp) {
+    //                         // Skip entries that are before the requested timestamp.
+    //                         item.Dispose();
+    //                         continue;
+    //                     }
+    //                     yield return item;
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     finally {
+    //         _readOperations.TryRemove(status.Id, out _);
+    //     }
+    // }
+    
+    
     /// <summary>
-    /// Reads log entries starting from the specified sequence ID.
+    /// Reads entries from the log.
     /// </summary>
-    /// <param name="sequenceId">
-    ///   The sequence ID to start reading from. If less than 1, reading starts from the beginning
-    ///   of the log.
+    /// <param name="options">
+    ///   The options for reading from the log.
     /// </param>
     /// <param name="cancellationToken">
     ///   The cancellation token for the operation.
     /// </param>
     /// <returns>
-    ///   A stream of <see cref="LogEntry"/> objects read from the log.
+    ///   A stream of <see cref="LogEntry"/> objects read from the log. Ensure that you dispose of
+    ///   each <see cref="LogEntry"/> instance after use to ensure that underlying resources are
+    ///   released.
     /// </returns>
     /// <exception cref="ObjectDisposedException">
     ///   The log has been disposed.
     /// </exception>
-    /// <exception cref="InvalidOperationException">
-    ///   The log has not been initialized.
-    /// </exception>
-    public async IAsyncEnumerable<LogEntry> ReadFromPositionAsync(ulong sequenceId = 0, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
+    /// <remarks>
+    ///   Calling this method will initialize the log if it has not already been initialized.
+    /// </remarks>
+    public async IAsyncEnumerable<LogEntry> ReadAllAsync(LogReadOptions? options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ThrowOnNotInitialised();
 
-        if (sequenceId > _lastSequenceId) {
-            // After the last sequence ID, there are no messages to read.
+        options ??= new LogReadOptions();
+        
+        if (options.Value.Timestamp > 0 && options.Value.Timestamp > _lastTimestamp) {
+            // After the last timestamp, there are no messages to read.
             yield break;
         }
         
-        ReadOperationStatus status;
+        if (options.Value.SequenceId > 0 && options.Value.SequenceId > _lastSequenceId) {
+            // After the last sequence ID, there are no messages to read.
+            yield break;
+        }
 
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);
+        ReadOperationStatus status;
         
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);
+        await InitCoreAsync(cts.Token).ConfigureAwait(false);
+
         using (await _segmentIndicesLock.ReaderLockAsync(cts.Token).ConfigureAwait(false)) {
             var segmentsToRead = new ConcurrentQueue<SegmentIndexWrapper>();
             
             foreach (var item in _readOnlySegmentIndices) {
-                if (sequenceId == 0 || item.Index.Header.LastSequenceId >= sequenceId) {
-                    segmentsToRead.Enqueue(item);
+                if (options.Value.Timestamp > 0) {
+                    if (item.Index.Header.LastTimestamp < options.Value.Timestamp) {
+                        // Skip segments that are before the requested timestamp.
+                        continue;
+                    }
                 }
+                else if (options.Value.SequenceId > 0) {
+                    if (item.Index.Header.LastSequenceId < options.Value.SequenceId) {
+                        // Skip segments that are before the requested sequence ID.
+                        continue;
+                    }
+                }
+                
+                segmentsToRead.Enqueue(item);
             }
 
-            if (_writerSegmentIndex is not null && (sequenceId == 0 || _writerSegmentIndex.Header.LastSequenceId >= sequenceId)) {
-                segmentsToRead.Enqueue(new SegmentIndexWrapper(_writer!.FilePath, _writerSegmentIndex));
+            if (_writerSegmentIndex is not null) {
+                // Add the writable segment if we are not filtering based on timestamp or sequence
+                // ID, or if it matches the provided criteria.
+                if (options.Value is { Timestamp: < 1, SequenceId: < 1 } || (options.Value.Timestamp > 0 && _writerSegmentIndex.Header.LastTimestamp >= options.Value.Timestamp) || (options.Value.SequenceId > 0 && _writerSegmentIndex.Header.LastSequenceId >= options.Value.SequenceId)) {
+                    segmentsToRead.Enqueue(new SegmentIndexWrapper(_writer!.FilePath, _writerSegmentIndex));
+                }
             }
             
-            if (segmentsToRead.IsEmpty) {
+            if (segmentsToRead.IsEmpty && !options.Value.WatchForChanges) {
                 // No segments to read, so we can exit early.
                 yield break;
             }
             
-            status = new ReadOperationStatus(segmentsToRead);
+            status = new ReadOperationStatus(segmentsToRead, options.Value.WatchForChanges);
             _readOperations[status.Id] = status;
             
-            LogReadFromPosition(status.Id, sequenceId);
+            LogRead(status.Id, options.Value.SequenceId, options.Value.Timestamp, options.Value.Count, options.Value.WatchForChanges);
         }
 
         try {
             var isFirstSegment = true;
 
             while (!cts.IsCancellationRequested) {
+                if (!options.Value.WatchForChanges && status.Segments.IsEmpty) {
+                    // If we are not watching for changes and there are no segments to read, we can exit early.
+                    yield break;
+                }
+                
                 await status.SegmentsAvailable.WaitAsync(cts.Token).ConfigureAwait(false);
 
                 while (status.Segments.TryDequeue(out var index)) {
@@ -401,14 +651,36 @@ public sealed partial class Log : IAsyncDisposable {
 
                         isFirstSegment = false;
 
-                        if (sequenceId > 0) {
+                        if (options.Value.Timestamp > 0) {
                             for (var i = 0; i < index.Index.Entries.Count; i++) {
                                 var entry = index.Index.Entries[i];
-                                if (entry.SequenceId < sequenceId) {
+                                if (entry.Timestamp < options.Value.Timestamp) {
+                                    // Skip entries that are before the requested timestamp.
+                                    continue; 
+                                }
+
+                                if (entry.Timestamp == options.Value.Timestamp) {
+                                    // We found the first message we are interested in, so we can start reading from here.
+                                    offset = entry.Offset;
+                                    break;
+                                }
+
+                                // We've found an entry that is after the requested timestamp; move back to the previous entry if possible.
+                                if (i > 0) {
+                                    offset = index.Index.Entries[i - 1].Offset;
+                                }
+
+                                break;
+                            }
+                        }
+                        else if (options.Value.SequenceId > 0) {
+                            for (var i = 0; i < index.Index.Entries.Count; i++) {
+                                var entry = index.Index.Entries[i];
+                                if (entry.SequenceId < options.Value.SequenceId) {
                                     continue; // Skip entries that are before the requested sequence ID.
                                 }
 
-                                if (entry.SequenceId == sequenceId) {
+                                if (entry.SequenceId == options.Value.SequenceId) {
                                     // We found the first message we are interested in, so we can start reading from here.
                                     offset = entry.Offset;
                                     break;
@@ -424,14 +696,30 @@ public sealed partial class Log : IAsyncDisposable {
                         }
                     }
 
-                    var watchForChanges = index.Index is MutableSegmentIndex;
-                    await foreach (var item in new FileSegmentReader(_loggerFactory.CreateLogger<FileSegmentReader>()).ReadLogEntriesAsync(index.FilePath, offset, SeekOrigin.Begin, watchForChanges, cts.Token).ConfigureAwait(false)) {
-                        if (item.SequenceId < sequenceId) {
-                            // Skip entries that are before the requested sequence ID.
-                            item.Dispose();
-                            continue;
+                    var watch = status.WatchForChanges && index.Index is MutableSegmentIndex;
+                    long count = 0;
+                    await foreach (var item in new FileSegmentReader(_loggerFactory.CreateLogger<FileSegmentReader>()).ReadLogEntriesAsync(index.FilePath, offset, SeekOrigin.Begin, watch, _options.ReadPollingInterval, cts.Token).ConfigureAwait(false)) {
+                        if (options.Value.Timestamp > 0) {
+                            if (item.Timestamp < options.Value.Timestamp) {
+                                // Skip entries that are before the requested timestamp.
+                                item.Dispose();
+                                continue;
+                            }
                         }
+                        else if (options.Value.SequenceId > 0) {
+                            if (item.SequenceId < options.Value.SequenceId) {
+                                // Skip entries that are before the requested sequence ID.
+                                item.Dispose();
+                                continue;
+                            }
+                        }
+                        
                         yield return item;
+                        
+                        if (options.Value.Count > 0 && ++count >= options.Value.Count) {
+                            // If we have read enough messages, we can stop reading.
+                            yield break;
+                        }
                     }
                 }
             }
@@ -443,129 +731,80 @@ public sealed partial class Log : IAsyncDisposable {
     
     
     /// <summary>
-    /// Reads log entries starting from the specified timestamp.
+    /// Initialises the log if it has not already been initialised.
     /// </summary>
-    /// <param name="timestamp">
-    ///   The timestamp to start reading from. If less than 1, reading starts from the beginning
-    ///   of the log.
-    /// </param>
     /// <param name="cancellationToken">
     ///   The cancellation token for the operation.
     /// </param>
-    /// <returns>
-    ///   A stream of <see cref="LogEntry"/> objects read from the log.
-    /// </returns>
-    /// <exception cref="ObjectDisposedException">
-    ///   The log has been disposed.
-    /// </exception>
-    /// <exception cref="InvalidOperationException">
-    ///   The log has not been initialized.
-    /// </exception>
-    public async IAsyncEnumerable<LogEntry> ReadFromTimestampAsync(long timestamp = -1, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        ThrowOnNotInitialised();
-
-        if (timestamp > _lastTimestamp) {
-            // After the last timestamp, there are no messages to read.
-            yield break;
+    private async ValueTask InitCoreAsync(CancellationToken cancellationToken) {
+        if (_initialised) {
+            return;
         }
-
-        ReadOperationStatus status;
         
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);
-
-        using (await _segmentIndicesLock.ReaderLockAsync(cts.Token).ConfigureAwait(false)) {
-            var segmentsToRead = new ConcurrentQueue<SegmentIndexWrapper>();
-            
-            foreach (var item in _readOnlySegmentIndices) {
-                if (timestamp <= 0 || item.Index.Header.LastTimestamp >= timestamp) {
-                    segmentsToRead.Enqueue(item);
-                }
-            }
-
-            if (_writerSegmentIndex is not null && (timestamp <= 0 || _writerSegmentIndex.Header.LastTimestamp >= timestamp)) {
-                segmentsToRead.Enqueue(new SegmentIndexWrapper(_writer!.FilePath, _writerSegmentIndex));
-            }
-            
-            if (segmentsToRead.IsEmpty) {
-                // No segments to read, so we can exit early.
-                yield break;
-            }
-            
-            status = new ReadOperationStatus(segmentsToRead);
-            _readOperations[status.Id] = status;
-            
-            LogReadFromTimestamp(status.Id, timestamp);
-        }
+        await _initLock.WaitAsync(cancellationToken).ConfigureAwait(false);
 
         try {
-            var isFirstSegment = true;
-
-            while (!cts.IsCancellationRequested) {
-                await status.SegmentsAvailable.WaitAsync(cts.Token).ConfigureAwait(false);
-
-                while (status.Segments.TryDequeue(out var index)) {
-                    var offset = 0L;
-
-                    if (isFirstSegment) {
-                        // If this is the first matching segment, and we are seeking a specific sequence
-                        // ID, we can use the index entries to skip
-                        // ahead to the first message we are interested in.
-
-                        isFirstSegment = false;
-
-                        if (timestamp > 0) {
-                            for (var i = 0; i < index.Index.Entries.Count; i++) {
-                                var entry = index.Index.Entries[i];
-                                if (entry.Timestamp < timestamp) {
-                                    // Skip entries that are before the requested timestamp.
-                                    continue; 
-                                }
-
-                                if (entry.Timestamp == timestamp) {
-                                    // We found the first message we are interested in, so we can start reading from here.
-                                    offset = entry.Offset;
-                                    break;
-                                }
-
-                                // We've found an entry that is after the requested timestamp; move back to the previous entry if possible.
-                                if (i > 0) {
-                                    offset = index.Index.Entries[i - 1].Offset;
-                                }
-
-                                break;
-                            }
-                        }
-                    }
-
-                    var watchForChanges = index.Index is MutableSegmentIndex;
-                    await foreach (var item in new FileSegmentReader(_loggerFactory.CreateLogger<FileSegmentReader>()).ReadLogEntriesAsync(index.FilePath, offset, SeekOrigin.Begin, watchForChanges, cts.Token).ConfigureAwait(false)) {
-                        if (item.Timestamp < timestamp) {
-                            // Skip entries that are before the requested timestamp.
-                            item.Dispose();
-                            continue;
-                        }
-                        yield return item;
-                    }
-                }
+            if (_initialised) {
+                return;
             }
+            
+            using var handle = await _writeLock.LockAsync(cancellationToken).ConfigureAwait(false);
+            using var segmentIndicesLockHandle = await _segmentIndicesLock.WriterLockAsync(cancellationToken).ConfigureAwait(false);
+            
+            LogInitialising(_dataDirectory.FullName);
+            _dataDirectory.Create();
+
+            var files = _dataDirectory.GetFiles("*.wal", SearchOption.TopDirectoryOnly);
+            if (files.Length == 0) {
+                _lastSequenceId = 0;
+                _initialised = true;
+                return;
+            }
+
+            // Move from newest to oldest segment files.
+            for (var i = files.Length - 1; i >= 0; i--) {
+                var file = files[i];
+
+                if (!TryGetSegmentDetailsFromFileName(file, out var segmentName, out var originTime)) {
+                    // The file does not match the expected naming convention.
+                    continue;
+                }
+
+                LogCheckingSegment(file.FullName);
+                var header = FileSegmentReader.ReadHeader(file.FullName);
+
+                if (header is null) {
+                    LogInvalidSegmentHeader(file.FullName);
+                    continue; // Skip invalid segment files
+                }
+
+                if (header.LastSequenceId > _lastSequenceId) {
+                    _lastSequenceId = header.LastSequenceId;
+                }
+
+                if (header.LastTimestamp > _lastTimestamp) {
+                    _lastTimestamp = header.LastTimestamp;
+                }
+
+                if (!header.ReadOnly) {
+                    // This is our writable segment.
+                    _writer ??= CreateFileSegmentWriter(
+                        segmentName,
+                        file.FullName,
+                        GetSegmentExpiryTime(originTime));
+                    _writerSegmentIndex = (MutableSegmentIndex) await BuildSegmentIndexAsync(header, file.FullName, cancellationToken).ConfigureAwait(false);
+                    LogSegmentLoaded(file.FullName, false, header.MessageCount, header.FirstSequenceId, header.LastSequenceId, header.FirstTimestamp, header.LastTimestamp);
+                    continue;
+                }
+
+                _readOnlySegmentIndices.Add(new SegmentIndexWrapper(file.FullName, await BuildSegmentIndexAsync(header, file.FullName, cancellationToken).ConfigureAwait(false)));
+                LogSegmentLoaded(file.FullName, true, header.MessageCount, header.FirstSequenceId, header.LastSequenceId, header.FirstTimestamp, header.LastTimestamp);
+            }
+
+            _initialised = true;
         }
         finally {
-            _readOperations.TryRemove(status.Id, out _);
-        }
-    }
-    
-    
-    /// <summary>
-    /// Throws an <see cref="InvalidOperationException"/> if the log has not been initialized.
-    /// </summary>
-    /// <exception cref="InvalidOperationException">
-    ///   The log has not been initialized.
-    /// </exception>
-    [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    private void ThrowOnNotInitialised() {
-        if (!_initialised) {
-            throw new InvalidOperationException("Log must be initialized before performing this operation.");
+            _initLock.Set();
         }
     }
 
@@ -596,10 +835,10 @@ public sealed partial class Log : IAsyncDisposable {
     ///   The name of the segment.
     /// </param>
     /// <returns>
-    ///   A file name for the segment, formatted as <c>segment-{NAME}.wal</c>.
+    ///   A file name for the segment, formatted as <c>{NAME}.wal</c>.
     /// </returns>
     private string GetSegmentFileName(string segmentName) 
-        => Path.Combine(_dataDirectory.FullName, $"segment-{segmentName}.wal");
+        => Path.Combine(_dataDirectory.FullName, segmentName + ".wal");
 
     
     
@@ -607,13 +846,14 @@ public sealed partial class Log : IAsyncDisposable {
         segmentName = null;
         originTime = default;
         
-        // Extract segment name and origin time from the file name, which is expected to be in the format "segment-yyyyMMddHHmmss-xxxxxxxxxxxxxxxxxxxx.wal"
-        var parts = Path.GetFileNameWithoutExtension(file.Name).Split('-');
-        if (parts.Length < 3 || !DateTimeOffset.TryParseExact(parts[1], "yyyyMMddHHmmss", null, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out originTime)) {
+        // Extract segment name and origin time from the file name, which is expected to be in the format "yyyyMMddHHmmss-xxxxxxxxxxxxxxxxxxxx.wal"
+        var fileNameWithoutExtension = Path.GetFileNameWithoutExtension(file.Name);
+        var parts = fileNameWithoutExtension.Split('-');
+        if (parts.Length < 2 || !DateTimeOffset.TryParseExact(parts[0], "yyyyMMddHHmmss", null, DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out originTime)) {
             return false;
         }
         
-        segmentName = string.Concat(parts[1], "-", parts[2]);
+        segmentName = fileNameWithoutExtension;
         return true;
     }
     
@@ -816,12 +1056,10 @@ public sealed partial class Log : IAsyncDisposable {
     
     [LoggerMessage(6, LogLevel.Information, "Rollover required: reason = {reason}, new segment file path = '{filePath}'")]
     partial void LogRolloverCompleted(RolloverReason reason, string filePath);
-
-    [LoggerMessage(7, LogLevel.Trace, "Reading from position: sequence ID = {sequenceId}, operation ID = {operationId}")]
-    partial void LogReadFromPosition(Guid operationId, ulong sequenceId);
     
-    [LoggerMessage(8, LogLevel.Trace, "Reading from timestamp: timestamp = {timestamp}, operation ID = {operationId}")]
-    partial void LogReadFromTimestamp(Guid operationId, long timestamp);
+    [LoggerMessage(7, LogLevel.Trace, "Reading from position: operation ID = {operationId}, sequence ID = {sequenceId}, timestamp = {timestamp}, count = {count}, watch for changes = {watchForChanges}")]
+    partial void LogRead(Guid operationId, ulong sequenceId, long timestamp, long count, bool watchForChanges);
+
     
     /// <summary>
     /// A wrapper for a segment index that includes the file path for the segment.
@@ -842,7 +1080,12 @@ public sealed partial class Log : IAsyncDisposable {
     /// <param name="Segments">
     ///   The initial segments to read from.
     /// </param>
-    private record ReadOperationStatus(ConcurrentQueue<SegmentIndexWrapper> Segments) {
+    /// <param name="WatchForChanges">
+    ///   When <see langword="true"/>, the operation will wait for new log entries to be added to
+    ///   the latest segment when it reaches the end of the log stream. Otherwise, the operation
+    ///   will complete when is reaches the end of the latest segment.
+    /// </param>
+    private record ReadOperationStatus(ConcurrentQueue<SegmentIndexWrapper> Segments, bool WatchForChanges) {
         
         /// <summary>
         /// The unique identifier for this read operation.

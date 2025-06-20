@@ -1,3 +1,5 @@
+using System.Buffers;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -10,7 +12,7 @@ public class LogTests {
     
     private static IServiceProvider s_serviceProvider = null!;
 
-    public TestContext? TestContext { get; set; }
+    public TestContext TestContext { get; set; } = null!;
 
 
     [ClassInitialize]
@@ -34,56 +36,13 @@ public class LogTests {
             Directory.Delete(s_tempPath, true);
         }
     }
-
-    
-    [TestMethod]
-    public async Task ShouldThrowOnWriteWhenNotInitialized() {
-        await using var log = new Log(new LogOptions() {
-            DataDirectory = Path.Combine(s_tempPath!, TestContext!.TestName!)
-        });
-
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () => {
-            using var msg = new LogMessage(Enumerable.Repeat((byte) 1, 64).ToArray());
-            await log.WriteAsync(msg);
-        });
-    }
-    
-    
-    [TestMethod]
-    public async Task ShouldThrowOnReadFromPositionWhenNotInitialized() {
-        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
-            DataDirectory = Path.Combine(s_tempPath!, TestContext!.TestName!)
-        });
-
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () => {
-            await foreach (var _ in log.ReadFromPositionAsync()) {
-                // This will throw since the log is not initialized
-            }
-        });
-    }
-    
-    
-    [TestMethod]
-    public async Task ShouldThrowOnReadFromTimestampWhenNotInitialized() {
-        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
-            DataDirectory = Path.Combine(s_tempPath!, TestContext!.TestName!)
-        });
-
-        await Assert.ThrowsExceptionAsync<InvalidOperationException>(async () => {
-            await foreach (var _ in log.ReadFromTimestampAsync()) {
-                // This will throw since the log is not initialized
-            }
-        });
-    }
     
 
     [TestMethod]
     public async Task ShouldWriteMessages() {
         await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
-            DataDirectory = Path.Combine(s_tempPath!, TestContext!.TestName!)
+            DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!)
         });
-
-        await log.InitAsync();
         
         using var msg1 = new LogMessage(Enumerable.Repeat((byte) 1, 64).ToArray());
         await log.WriteAsync(msg1);
@@ -98,10 +57,8 @@ public class LogTests {
     [TestMethod]
     public async Task ShouldReadMessagesFromActiveSegment() {
         await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
-            DataDirectory = Path.Combine(s_tempPath!, TestContext!.TestName!)
+            DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!)
         });
-
-        await log.InitAsync();
         
         var writeResults = new List<WriteResult>();
 
@@ -133,21 +90,17 @@ public class LogTests {
             Assert.AreEqual(64, msg.Data.Count);
             
             msg.Dispose();
-
-            if (writeResults.Count == 0) {
-                break;
-            }
         }
+        
+        Assert.AreEqual(0, writeResults.Count, "Not all write results were read.");
     }
 
 
     [TestMethod]
     public async Task ShouldReadMessagesFromSegmentId() {
         await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
-            DataDirectory = Path.Combine(s_tempPath!, TestContext!.TestName!)
+            DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!)
         });
-
-        await log.InitAsync();
         
         var writeResults = new List<WriteResult>();
 
@@ -165,7 +118,7 @@ public class LogTests {
         var startSequenceId = writeResults[2].SequenceId;
         var expectedResults = writeResults[2..];
         
-        //TestContext.CancellationTokenSource.CancelAfter(10_000);
+        TestContext.CancellationTokenSource.CancelAfter(10_000);
         
         await foreach (var item in log.ReadFromPositionAsync(startSequenceId, cancellationToken: TestContext.CancellationTokenSource.Token)) {
             if (expectedResults.Count == 0) {
@@ -180,21 +133,17 @@ public class LogTests {
             Assert.AreEqual(64, item.Data.Count);
             
             item.Dispose();
-
-            if (expectedResults.Count == 0) {
-                break;
-            }
         }
+        
+        Assert.AreEqual(0, expectedResults.Count, "Not all expected results were read.");
     }
     
     
     [TestMethod]
     public async Task ShouldReadMessagesFromTimestamp() {
         await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
-            DataDirectory = Path.Combine(s_tempPath!, TestContext!.TestName!)
+            DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!)
         });
-
-        await log.InitAsync();
         
         var writeResults = new List<WriteResult>();
 
@@ -234,15 +183,105 @@ public class LogTests {
             }
         }
     }
+    
+    
+    [TestMethod]
+    public async Task ShouldReadRequestedNumberOfMessages() {
+        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+            DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!)
+        });
+        
+        var writeResults = new List<WriteResult>();
+
+        using var msg = new LogMessage();
+        
+        for (var i = 0; i < 10; i++) {
+            msg.Reset();
+            msg.GetSpan(64)[..64].Fill((byte) (i + 1));
+            msg.Advance(64);
+            writeResults.Add(await log.WriteAsync(msg));
+        }
+
+        await log.FlushAsync();
+        
+        TestContext.CancellationTokenSource.CancelAfter(10_000);
+        
+        var count = 0;
+        await foreach (var item in log.ReadFromPositionAsync(count: 5, cancellationToken: TestContext.CancellationTokenSource.Token)) {
+            if (writeResults.Count == 0) {
+                Assert.Fail("No write results available to compare with.");
+            }
+            
+            var expected = writeResults[0];
+            writeResults.RemoveAt(0);
+            
+            Assert.AreEqual(expected.SequenceId, item.SequenceId);
+            Assert.AreEqual(expected.Timestamp, item.Timestamp);
+            Assert.AreEqual(64, item.Data.Count);
+            
+            item.Dispose();
+            ++count;
+            
+            if (count >= 5) {
+                break;
+            }
+        }
+        
+        Assert.AreEqual(5, count, "Did not read the expected number of messages.");
+    }
+
+
+    [TestMethod]
+    public async Task ShouldWatchForChangesWhileReading() {
+        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+            DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
+            ReadPollingInterval = TimeSpan.FromMilliseconds(10)
+        });
+
+        var @lock = new Nito.AsyncEx.AsyncAutoResetEvent(set: true);
+
+        _ = Task.Run(async () => {
+            using var msg = new LogMessage();
+            var rnd = new Random();
+            try {
+                while (!TestContext.CancellationTokenSource.IsCancellationRequested) {
+                    await @lock.WaitAsync(TestContext.CancellationTokenSource.Token);
+                    msg.Reset();
+                    msg.Write(BitConverter.GetBytes(rnd.NextDouble()));
+                    await log.WriteAsync(msg, TestContext.CancellationTokenSource.Token);
+                    await log.FlushAsync(TestContext.CancellationTokenSource.Token);
+                }
+            }
+            catch (OperationCanceledException) { } 
+            catch (ObjectDisposedException) { }
+        });
+
+        TestContext.CancellationTokenSource.CancelAfter(10_000);
+        
+        var count = 0;
+        await foreach (var item in log.ReadFromPositionAsync(watchForChanges: true, cancellationToken: TestContext.CancellationTokenSource.Token)) {
+            item.Dispose();
+            ++count;
+            
+            if (count < 5) {
+                @lock.Set();
+                continue;
+            }
+
+            break;
+        }
+        
+        await TestContext.CancellationTokenSource.CancelAsync();
+        
+        Assert.AreEqual(5, count, "Did not read the expected number of messages.");
+    }
 
 
     [TestMethod]
     public async Task ManualRolloverShouldCreateNewSegment() {
         await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
-            DataDirectory = Path.Combine(s_tempPath!, TestContext!.TestName!)
+            DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!)
         });
-
-        await log.InitAsync();
         
         // Write a message to ensure the log has created the first segment
         using var msg = new LogMessage();
@@ -264,11 +303,9 @@ public class LogTests {
     [TestMethod]
     public async Task CountBasedRolloverShouldCreateNewSegment() {
         await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
-            DataDirectory = Path.Combine(s_tempPath!, TestContext!.TestName!),
+            DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
             MaxSegmentMessageCount = 5
         });
-
-        await log.InitAsync();
         
         using var msg = new LogMessage();
         
@@ -298,11 +335,9 @@ public class LogTests {
     [TestMethod]
     public async Task SizeBasedRolloverShouldCreateNewSegment() {
         await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
-            DataDirectory = Path.Combine(s_tempPath!, TestContext!.TestName!),
+            DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
             MaxSegmentSizeBytes = 64 + 5 * (24 + 64 + 4) // 64 bytes for segment header, 5 messages with: 24 bytes header, 64 bytes body, and 4 bytes checksum
         });
-
-        await log.InitAsync();
         
         using var msg = new LogMessage();
         
@@ -332,11 +367,9 @@ public class LogTests {
     [TestMethod]
     public async Task TimeBasedRolloverShouldCreateNewSegment() {
         await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
-            DataDirectory = Path.Combine(s_tempPath!, TestContext!.TestName!),
+            DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
             MaxSegmentTimeSpan = TimeSpan.FromSeconds(1)
         });
-
-        await log.InitAsync();
         
         using var msg = new LogMessage();
         

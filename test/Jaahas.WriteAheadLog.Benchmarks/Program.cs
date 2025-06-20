@@ -2,4 +2,4 @@
 
 using Jaahas.WriteAheadLog.Benchmarks;
 
-BenchmarkRunner.Run<LogWriteBenchmarks>();
+BenchmarkRunner.Run<SparseIndexBenchmarks>();

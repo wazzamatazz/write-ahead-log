@@ -62,7 +62,7 @@ internal sealed partial class FileSegmentReader : SegmentReader {
         return File.Open(filePath, new FileStreamOptions() {
             Mode = FileMode.Open,
             Access = FileAccess.Read,
-            Share = FileShare.ReadWrite,
+            Share = FileShare.ReadWrite | FileShare.Delete,
             Options = FileOptions.SequentialScan,
             BufferSize = 64 * 1024 // 64 KB buffer size
         });

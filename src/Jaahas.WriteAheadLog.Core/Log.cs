@@ -312,6 +312,38 @@ public sealed partial class Log : IAsyncDisposable {
         using var handle = await _writeLock.LockAsync(cts.Token).ConfigureAwait(false);
         await RolloverCoreAsync(RolloverReason.Manual, cts.Token).ConfigureAwait(false);
     }
+
+
+    /// <summary>
+    /// Cleans up up the log by removing old segments that are no longer needed based on the log's
+    /// maximum segment count and retention period.
+    /// </summary>
+    /// <param name="cancellationToken">
+    ///   The cancellation token for the operation.
+    /// </param>
+    /// <remarks>
+    ///
+    /// <para>
+    ///   Cleanup is also performed periodically in the background if the <see cref="LogOptions.CleanupInterval"/>
+    ///   setting is greater than <see cref="TimeSpan.Zero"/>.
+    /// </para>
+    ///
+    /// <para>
+    ///   The current writable segment is never deleted as part of the cleanup process, even if it
+    ///   meets the cleanup criteria. Segment files that are in use by ongoing read operations will
+    ///   be deleted once the read operations have finished reading the file.
+    /// </para>
+    /// 
+    /// </remarks>
+    public async ValueTask CleanupAsync(CancellationToken cancellationToken = default) {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);
+        
+        using var handle = await _writeLock.LockAsync(cts.Token).ConfigureAwait(false);
+        LogCleanupRequested("manual");
+        CleanupCore();
+    }
     
     
     /// <summary>
@@ -493,6 +525,12 @@ public sealed partial class Log : IAsyncDisposable {
     }
     
     
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private FileInfo[] GetSegmentFiles() => !_dataDirectory.Exists 
+        ? [] 
+        : _dataDirectory.GetFiles("*.wal", SearchOption.TopDirectoryOnly);
+    
+    
     /// <summary>
     /// Initialises the log if it has not already been initialised.
     /// </summary>
@@ -517,7 +555,7 @@ public sealed partial class Log : IAsyncDisposable {
             LogInitialising(_dataDirectory.FullName);
             _dataDirectory.Create();
 
-            var files = _dataDirectory.GetFiles("*.wal", SearchOption.TopDirectoryOnly);
+            var files = GetSegmentFiles();
             if (files.Length == 0) {
                 _lastSequenceId = 0;
                 _initialised = true;
@@ -565,6 +603,9 @@ public sealed partial class Log : IAsyncDisposable {
             }
 
             _initialised = true;
+            if (_options.CleanupInterval > TimeSpan.Zero) {
+                _ = RunCleanupLoopAsync(_options.CleanupInterval, _disposedTokenSource.Token);
+            }
         }
         finally {
             _initLock.Set();
@@ -783,6 +824,84 @@ public sealed partial class Log : IAsyncDisposable {
     }
     
     
+    private async Task RunCleanupLoopAsync(TimeSpan interval, CancellationToken cancellationToken) {
+        LogCleanupLoopStarted(interval);
+        
+        while (!cancellationToken.IsCancellationRequested) {
+            try {
+                await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
+                using var handle = await _writeLock.LockAsync(cancellationToken).ConfigureAwait(false);
+                LogCleanupRequested("scheduled");
+                CleanupCore();
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+            catch (Exception e) {
+                LogSegmentCleanupLoopError(e);
+            }
+        }
+
+        LogCleanupLoopStopped();
+    }
+
+
+    private void CleanupCore() {
+        if (_disposed) {
+            return;
+        }
+        
+        var segmentFiles = GetSegmentFiles()
+            .Select(x => TryGetSegmentDetailsFromFileName(x, out var name, out var originTime) 
+                ? new { File = x, Name = name, OriginTime = originTime } 
+                : null)
+            .Where(x => x is not null)
+            .ToArray();
+        
+        var index = 0;
+        
+        if (_options.MaxSegmentCount > 0 && segmentFiles.Length > _options.MaxSegmentCount) {
+            for (; index < segmentFiles.Length; index++) {
+                var file = segmentFiles[index];
+
+                if (_writer?.FilePath == file!.File.FullName) {
+                    // Skip the current writable segment, as it should not be deleted.
+                    continue;
+                }
+                
+                try {
+                    LogDeletingSegmentFileCountExceeded(file.File.FullName, segmentFiles.Length, _options.MaxSegmentCount);
+                    file.File.Delete();
+                }
+                catch (Exception e) {
+                    LogSegmentFileDeleteFailed(file.File.FullName, e);
+                }
+            }
+        }
+
+        if (_options.SegmentRetentionPeriod > TimeSpan.Zero) {
+            for (; index < segmentFiles.Length; index++) {
+                var file = segmentFiles[index];
+                
+
+                if (_writer?.FilePath == file!.File.FullName) {
+                    // Skip the current writable segment, as it should not be deleted.
+                    continue;
+                }
+
+                var age = _timeProvider.GetUtcNow() - file.OriginTime;
+                if (age > _options.SegmentRetentionPeriod) {
+                    try {
+                        LogDeletingSegmentFileRetentionPeriodExceeded(file.File.FullName, age, _options.SegmentRetentionPeriod);
+                        file.File.Delete();
+                    }
+                    catch (Exception e) {
+                        LogSegmentFileDeleteFailed(file.File.FullName, e);
+                    }
+                }
+            }
+        }
+    }
+    
+    
     /// <inheritdoc />
     public async ValueTask DisposeAsync() {
         if (_disposed) {
@@ -792,12 +911,12 @@ public sealed partial class Log : IAsyncDisposable {
         using var handle = await _writeLock.LockAsync().ConfigureAwait(false);
 
         await _disposedTokenSource.CancelAsync().ConfigureAwait(false);
-        
+
         if (_writer is not null) {
             await _writer.DisposeAsync().ConfigureAwait(false);
             _writer = null;
         }
-        
+
         _disposed = true;
     }
 
@@ -823,6 +942,27 @@ public sealed partial class Log : IAsyncDisposable {
     [LoggerMessage(7, LogLevel.Trace, "Reading from position: operation ID = {operationId}, sequence ID = {sequenceId}, timestamp = {timestamp}, count = {count}, watch for changes = {watchForChanges}")]
     partial void LogRead(Guid operationId, ulong sequenceId, long timestamp, long count, bool watchForChanges);
 
+    [LoggerMessage(8, LogLevel.Debug, "Starting log cleanup loop: interval = {interval}")]
+    partial void LogCleanupLoopStarted(TimeSpan interval);
+    
+    [LoggerMessage(9, LogLevel.Debug, "Stopping log cleanup loop.")]
+    partial void LogCleanupLoopStopped();
+    
+    [LoggerMessage(10, LogLevel.Debug, "Requesting log cleanup: trigger type = {trigger}")]
+    partial void LogCleanupRequested(string trigger);
+    
+    [LoggerMessage(11, LogLevel.Debug, "Deleting segment file '{filePath}': reason = MaxSegmentCountExceeded, count = {count}, limit = {limit}")]
+    partial void LogDeletingSegmentFileCountExceeded(string filePath, int count, int limit);
+    
+    [LoggerMessage(12, LogLevel.Debug, "Deleting segment file '{filePath}': reason = SegmentRetentionPeriodExceeded, age = {age}, retention period = {retentionPeriod}")]
+    partial void LogDeletingSegmentFileRetentionPeriodExceeded(string filePath, TimeSpan age, TimeSpan retentionPeriod);
+    
+    [LoggerMessage(13, LogLevel.Error, "Failed to delete segment file '{filePath}'.")]
+    partial void LogSegmentFileDeleteFailed(string filePath, Exception error);
+    
+    [LoggerMessage(14, LogLevel.Error, "An error occurred in the segment cleanup loop.")]
+    partial void LogSegmentCleanupLoopError(Exception error);
+    
     
     /// <summary>
     /// A wrapper for a segment index that includes the file path for the segment.

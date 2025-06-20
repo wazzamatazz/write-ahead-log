@@ -48,10 +48,11 @@ internal abstract class SegmentReader {
     protected static async IAsyncEnumerable<LogEntry> ReadLogEntriesAsync(PipeReader pipeReader, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
         ArgumentNullException.ThrowIfNull(pipeReader);
 
-        while (!cancellationToken.IsCancellationRequested) {
+        var @continue = true;
+        
+        while (!cancellationToken.IsCancellationRequested && @continue) {
             var readResult = await pipeReader.ReadAsync(cancellationToken).ConfigureAwait(false);
             var buffer = readResult.Buffer;
-            var @continue = true;
 
             try {
                 if (buffer.IsEmpty) {
@@ -70,10 +71,6 @@ internal abstract class SegmentReader {
                 if (readResult.IsCompleted || readResult.IsCanceled) {
                     @continue = false;
                 }
-            }
-
-            if (!@continue) {
-                break;
             }
         }
     }

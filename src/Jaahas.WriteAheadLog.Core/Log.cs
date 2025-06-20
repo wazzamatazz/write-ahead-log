@@ -324,7 +324,7 @@ public sealed partial class Log : IAsyncDisposable {
     /// <remarks>
     ///
     /// <para>
-    ///   Cleanup is also performed periodically in the background if the <see cref="LogOptions.CleanupInterval"/>
+    ///   Cleanup is also performed periodically in the background if the <see cref="LogOptions.SegmentCleanupInterval"/>
     ///   setting is greater than <see cref="TimeSpan.Zero"/>.
     /// </para>
     ///
@@ -342,7 +342,7 @@ public sealed partial class Log : IAsyncDisposable {
         
         using var handle = await _writeLock.LockAsync(cts.Token).ConfigureAwait(false);
         LogCleanupRequested("manual");
-        CleanupCore();
+        await CleanupCoreAsync(cts.Token).ConfigureAwait(false);
     }
     
     
@@ -558,7 +558,7 @@ public sealed partial class Log : IAsyncDisposable {
             var files = GetSegmentFiles();
             if (files.Length == 0) {
                 _lastSequenceId = 0;
-                _initialised = true;
+                MarkAsInitialised();
                 return;
             }
 
@@ -602,13 +602,19 @@ public sealed partial class Log : IAsyncDisposable {
                 LogSegmentLoaded(file.FullName, true, header.MessageCount, header.FirstSequenceId, header.LastSequenceId, header.FirstTimestamp, header.LastTimestamp);
             }
 
-            _initialised = true;
-            if (_options.CleanupInterval > TimeSpan.Zero) {
-                _ = RunCleanupLoopAsync(_options.CleanupInterval, _disposedTokenSource.Token);
-            }
+            MarkAsInitialised();
         }
         finally {
             _initLock.Set();
+        }
+
+        return;
+        
+        void MarkAsInitialised() {
+            _initialised = true;
+            if (_options.SegmentCleanupInterval > TimeSpan.Zero) {
+                _ = RunCleanupLoopAsync(_options.SegmentCleanupInterval, _disposedTokenSource.Token);
+            }
         }
     }
 
@@ -832,7 +838,7 @@ public sealed partial class Log : IAsyncDisposable {
                 await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
                 using var handle = await _writeLock.LockAsync(cancellationToken).ConfigureAwait(false);
                 LogCleanupRequested("scheduled");
-                CleanupCore();
+                await CleanupCoreAsync(cancellationToken).ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
             catch (Exception e) {
@@ -844,35 +850,40 @@ public sealed partial class Log : IAsyncDisposable {
     }
 
 
-    private void CleanupCore() {
+    private async ValueTask CleanupCoreAsync(CancellationToken cancellationToken) {
         if (_disposed) {
             return;
         }
+        
+        using var handle = await _segmentIndicesLock.WriterLockAsync(cancellationToken).ConfigureAwait(false);
         
         var segmentFiles = GetSegmentFiles()
             .Select(x => TryGetSegmentDetailsFromFileName(x, out var name, out var originTime) 
                 ? new { File = x, Name = name, OriginTime = originTime } 
                 : null)
             .Where(x => x is not null)
+            // Filter out the current writable segment file.
+            .Where(x => x!.File.FullName != _writer?.FilePath)
             .ToArray();
         
         var index = 0;
         
-        if (_options.MaxSegmentCount > 0 && segmentFiles.Length > _options.MaxSegmentCount) {
-            for (; index < segmentFiles.Length; index++) {
+        if (_options.SegmentRetentionLimit > 0 && segmentFiles.Length > _options.SegmentRetentionLimit) {
+            var filesToRemove = segmentFiles.Length - _options.SegmentRetentionLimit;
+            for (; index < filesToRemove; index++) {
                 var file = segmentFiles[index];
-
-                if (_writer?.FilePath == file!.File.FullName) {
-                    // Skip the current writable segment, as it should not be deleted.
-                    continue;
-                }
                 
                 try {
-                    LogDeletingSegmentFileCountExceeded(file.File.FullName, segmentFiles.Length, _options.MaxSegmentCount);
+                    LogDeletingSegmentFileCountExceeded(file!.File.FullName, segmentFiles.Length, _options.SegmentRetentionLimit);
                     file.File.Delete();
+                    
+                    var indexEntry = _readOnlySegmentIndices.FirstOrDefault(x => x.FilePath == file.File.FullName);
+                    if (indexEntry is not null) {
+                        _readOnlySegmentIndices.Remove(indexEntry);
+                    }
                 }
                 catch (Exception e) {
-                    LogSegmentFileDeleteFailed(file.File.FullName, e);
+                    LogSegmentFileDeleteFailed(file!.File.FullName, e);
                 }
             }
         }
@@ -880,22 +891,23 @@ public sealed partial class Log : IAsyncDisposable {
         if (_options.SegmentRetentionPeriod > TimeSpan.Zero) {
             for (; index < segmentFiles.Length; index++) {
                 var file = segmentFiles[index];
-                
 
-                if (_writer?.FilePath == file!.File.FullName) {
-                    // Skip the current writable segment, as it should not be deleted.
+                var age = _timeProvider.GetUtcNow() - file!.OriginTime;
+                if (age <= _options.SegmentRetentionPeriod) {
                     continue;
                 }
 
-                var age = _timeProvider.GetUtcNow() - file.OriginTime;
-                if (age > _options.SegmentRetentionPeriod) {
-                    try {
-                        LogDeletingSegmentFileRetentionPeriodExceeded(file.File.FullName, age, _options.SegmentRetentionPeriod);
-                        file.File.Delete();
+                try {
+                    LogDeletingSegmentFileRetentionPeriodExceeded(file.File.FullName, age, _options.SegmentRetentionPeriod);
+                    file.File.Delete();
+                    
+                    var indexEntry = _readOnlySegmentIndices.FirstOrDefault(x => x.FilePath == file.File.FullName);
+                    if (indexEntry is not null) {
+                        _readOnlySegmentIndices.Remove(indexEntry);
                     }
-                    catch (Exception e) {
-                        LogSegmentFileDeleteFailed(file.File.FullName, e);
-                    }
+                }
+                catch (Exception e) {
+                    LogSegmentFileDeleteFailed(file.File.FullName, e);
                 }
             }
         }

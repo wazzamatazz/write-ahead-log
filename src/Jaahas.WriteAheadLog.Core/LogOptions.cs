@@ -65,24 +65,28 @@ public class LogOptions {
     /// The interval at which old WAL segment files will be checked and cleaned up.
     /// </summary>
     /// <remarks>
-    ///   Specifying a value less than or equal to <see cref="TimeSpan.Zero"/> disables periodic cleanup.
+    ///   Specifying a value less than or equal to <see cref="TimeSpan.Zero"/> disables periodic
+    ///   cleanup.
     /// </remarks>
-    public TimeSpan CleanupInterval { get; set; } = TimeSpan.FromHours(1);
+    public TimeSpan SegmentCleanupInterval { get; set; } = TimeSpan.FromHours(1);
 
     /// <summary>
-    /// The maximum age for a WAL segment file before it is eligible for deletion.
+    /// The maximum age for a closed WAL segment file before it is eligible for deletion.
     /// </summary>
     /// <remarks>
-    ///   Specifying a value less than or equal to <see cref="TimeSpan.Zero"/> disables age-based cleanup.
+    ///   Specifying a value less than or equal to <see cref="TimeSpan.Zero"/> disables age-based
+    ///   cleanup. The current writer segment is always retained.
     /// </remarks>
     public TimeSpan SegmentRetentionPeriod { get; set; } = TimeSpan.FromDays(7);
 
     /// <summary>
-    /// The maximum number of WAL segment files to retain. Older segments will be deleted if this count is exceeded.
+    /// The maximum number of closed WAL segment files to retain. Older segments will be deleted if
+    /// this count is exceeded.
     /// </summary>
     /// <remarks>
-    ///   Specifying a value less than or equal to zero disables count-based cleanup.
+    ///   Specifying a value less than or equal to zero disables count-based cleanup. The current
+    ///   writer segment is always retained.
     /// </remarks>
-    public int MaxSegmentCount { get; set; } = 0;
+    public int SegmentRetentionLimit { get; set; } = 0;
 
 }

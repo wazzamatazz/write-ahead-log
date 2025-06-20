@@ -7,18 +7,43 @@ using Jaahas.WriteAheadLog.Internal;
 
 namespace Jaahas.WriteAheadLog;
 
+/// <summary>
+/// Describes a single log entry in the Write-Ahead Log (WAL).
+/// </summary>
+/// <remarks>
+///   <see cref="LogEntry"/> instance must be disposed after use to release the underlying buffer
+///   holding the serialized entry.
+/// </remarks>
 public class LogEntry : IDisposable {
     
+    /// <summary>
+    /// The size of the serialized log entry header in bytes.
+    /// </summary>
     private const int HeaderSize = 24; // 4 + 4 + 8 + 8 (magic number, message body length, sequence ID, timestamp)
 
+    /// <summary>
+    /// Specifies if the <see cref="LogEntry"/> has been disposed.
+    /// </summary>
     private bool _disposed;
     
+    /// <summary>
+    /// The buffer holding the serialized entry.
+    /// </summary>
     private readonly byte[] _buffer;
 
+    /// <summary>
+    /// The sequence ID for the log entry.
+    /// </summary>
     public ulong SequenceId { get; }
     
+    /// <summary>
+    /// The timestamp of the log entry, measured in ticks.
+    /// </summary>
     public long Timestamp { get; }
 
+    /// <summary>
+    /// The data segment of the log entry, which contains the actual message payload.
+    /// </summary>
     public ArraySegment<byte> Data {
         get {
             ObjectDisposedException.ThrowIf(_disposed, this);
@@ -32,6 +57,27 @@ public class LogEntry : IDisposable {
     public int TotalSize { get; }
 
     
+    /// <summary>
+    /// Creates a new <see cref="LogEntry"/> instance.
+    /// </summary>
+    /// <param name="sequenceId">
+    ///   The sequence ID for the log entry.
+    /// </param>
+    /// <param name="timestamp">
+    ///   The timestamp for the log entry, measured in ticks.
+    /// </param>
+    /// <param name="buffer">
+    ///   The buffer holding the serialized entry.
+    /// </param>
+    /// <param name="offset">
+    ///   The offset in the buffer where the data segment of the log entry starts.
+    /// </param>
+    /// <param name="count">
+    ///   The number of bytes in the data segment of the log entry.
+    /// </param>
+    /// <param name="totalSize">
+    ///   The total size of the log entry in bytes, including the header, body, and checksum.
+    /// </param>
     private LogEntry(ulong sequenceId, long timestamp, byte[] buffer, int offset, int count, int totalSize) {
         SequenceId = sequenceId;
         Timestamp = timestamp;
@@ -43,6 +89,15 @@ public class LogEntry : IDisposable {
     }
 
     
+    /// <summary>
+    /// Gets the serialized size of a log entry based on the length of the message body.
+    /// </summary>
+    /// <param name="messageLength">
+    ///   The length of the message body in bytes.
+    /// </param>
+    /// <returns>
+    ///   The total size of the serialized log entry in bytes, including the header and checksum.
+    /// </returns>
     public static long GetSerializedSize(long messageLength) {
         ArgumentOutOfRangeException.ThrowIfLessThan(messageLength, 0);
         
@@ -51,6 +106,27 @@ public class LogEntry : IDisposable {
     }
     
 
+    /// <summary>
+    /// Writes a log entry to the specified buffer writer.
+    /// </summary>
+    /// <param name="writer">
+    ///   The buffer writer to write the log entry to.
+    /// </param>
+    /// <param name="sequenceId">
+    ///   The sequence ID for the log entry.
+    /// </param>
+    /// <param name="timestamp">
+    ///   The timestamp for the log entry, measured in ticks.
+    /// </param>
+    /// <param name="message">
+    ///   The message body of the log entry.
+    /// </param>
+    /// <returns>
+    ///   The total size of the serialized log entry in bytes, including the header, body, and checksum.
+    /// </returns>
+    /// <exception cref="ArgumentNullException">
+    ///   <paramref name="writer"/> is <see langword="null"/>.
+    /// </exception>
     public static long Write(IBufferWriter<byte> writer, ulong sequenceId, long timestamp, ReadOnlySequence<byte> message) {
         ArgumentNullException.ThrowIfNull(writer);
         
@@ -74,6 +150,23 @@ public class LogEntry : IDisposable {
     }
     
 
+    /// <summary>
+    /// Reads a log entry from the specified read-only byte sequence.
+    /// </summary>
+    /// <param name="sequence">
+    ///   The byte sequence to read the log entry from.
+    /// </param>
+    /// <param name="entry">
+    ///   The log entry that was read, or <see langword="null"/> if the sequence does not contain
+    ///   a valid log entry.
+    /// </param>
+    /// <returns>
+    ///   <see langword="true"/> if a valid log entry was read; otherwise, <see langword="false"/>.
+    /// </returns>
+    /// <remarks>
+    ///   When a log entry is successfully read, the <paramref name="sequence"/> is advanced to the
+    ///   position immediately after the end of the log entry.
+    /// </remarks>
     public static bool TryRead(ref ReadOnlySequence<byte> sequence, [NotNullWhen(true)] out LogEntry? entry) {
         entry = null;
 
@@ -100,7 +193,7 @@ public class LogEntry : IDisposable {
             return false;
         }
         
-        // Get a buffer to hold the message header, body and checksum.
+        // Rent a buffer to hold the message header, body and checksum.
         var buffer = ArrayPool<byte>.Shared.Rent(24 + messageLength + 4);
         var bufferSpan = new Span<byte>(buffer, 0, 24 + messageLength + 4);
 
@@ -137,12 +230,27 @@ public class LogEntry : IDisposable {
     }
 
 
+    /// <summary>
+    /// Advances the <paramref name="reader"/> to the next occurrence of the specified magic
+    /// bytes.
+    /// </summary>
+    /// <param name="reader">
+    ///   The <see cref="SequenceReader{T}"/> to advance.
+    /// </param>
+    /// <param name="magicBytes">
+    ///   The magic bytes to search for in the sequence.
+    /// </param>
+    /// <returns>
+    ///   <see langword="true"/> if the magic bytes were found and the reader was advanced past
+    ///   them; otherwise, <see langword="false"/>.
+    /// </returns>
     private static bool TryAdvanceToMagicNumber(ref SequenceReader<byte> reader, ReadOnlySpan<byte> magicBytes) {
         while (!reader.End) {
             var currentSpan = reader.CurrentSpan;
 
             if (currentSpan.Length >= magicBytes.Length) {
-                // Search for the magic number in the current span.
+                // Fast path; search for the magic bytes in the current span since the span is at
+                // least as long as the magic bytes sequence.
                 var index = currentSpan.IndexOf(magicBytes[0]);
 
                 while (index >= 0 && index <= currentSpan.Length - magicBytes.Length) {
@@ -164,6 +272,9 @@ public class LogEntry : IDisposable {
                 // Advance to the next segment but retain the last few bytes in case the magic
                 // number spans segments.
                 var advanceCount = Math.Max(0, currentSpan.Length - magicBytes.Length + 1);
+                if (advanceCount > reader.Remaining) {
+                    advanceCount = (int) reader.Remaining;
+                }
                 reader.Advance(advanceCount);
             }
             else {
@@ -176,6 +287,20 @@ public class LogEntry : IDisposable {
     }
 
 
+    /// <summary>
+    /// Slow path for finding the specified magic bytes in the sequence reader that is used when
+    /// the magic bytes span multiple segments in the <see cref="ReadOnlySequence{T}"/>.
+    /// </summary>
+    /// <param name="reader">
+    ///   The <see cref="SequenceReader{T}"/> to advance.
+    /// </param>
+    /// <param name="magicBytes">
+    ///   The magic bytes to search for in the sequence.
+    /// </param>
+    /// <returns>
+    ///   <see langword="true"/> if the magic bytes were found and the reader was advanced past
+    ///   them; otherwise, <see langword="false"/>.
+    /// </returns>
     private static bool TryAdvanceToMagicNumberSlow(ref SequenceReader<byte> reader, ReadOnlySpan<byte> magicBytes) {
         while (reader.Remaining >= magicBytes.Length) {
             var startPosition = reader.Position;
@@ -203,6 +328,7 @@ public class LogEntry : IDisposable {
     }
 
 
+    /// <inheritdoc/>
     public void Dispose() {
         if (_disposed) {
             return;

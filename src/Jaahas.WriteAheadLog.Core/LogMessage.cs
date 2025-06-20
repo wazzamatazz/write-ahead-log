@@ -4,16 +4,49 @@ using Microsoft.IO;
 
 namespace Jaahas.WriteAheadLog;
 
+/// <summary>
+/// A message to be written to the Write-Ahead Log (WAL).
+/// </summary>
+/// <remarks>
+///
+/// <para>
+///   <see cref="LogMessage"/> implements <see cref="IBufferWriter{T}"/> to allow for efficient
+///   writing of message data.
+/// </para>
+///
+/// <para>
+///   <see cref="LogMessage"/> makes use of shared buffers to reduce allocations. Dispose of the
+///   instance when it is no longer needed to return the buffer to the pool. You can reuse the
+///   same instance to write multiple log messages by calling <see cref="Reset"/> to clear the
+///   underlying buffer after each write to the <see cref="Log"/>.
+/// </para>
+/// 
+/// </remarks>
 public sealed class LogMessage : IBufferWriter<byte>, IDisposable {
 
+    /// <summary>
+    /// Specifies if the instance has been disposed.
+    /// </summary>
     private bool _disposed;
 
+    /// <summary>
+    /// The underlying stream used to write the log message data.
+    /// </summary>
     internal RecyclableMemoryStream? Stream { get; private set; }
-
-
+    
+    
+    /// <summary>
+    /// Creates a new <see cref="LogMessage"/> instance.
+    /// </summary>
     public LogMessage() { }
     
     
+    /// <summary>
+    /// Creates a new <see cref="LogMessage"/> instance containing the specified data.
+    /// </summary>
+    /// <param name="data">
+    ///   The data to write to the log message.
+    /// </param>
     public LogMessage(ReadOnlySpan<byte> data) {
         this.Write(data);
     }

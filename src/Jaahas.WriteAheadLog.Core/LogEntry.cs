@@ -5,6 +5,8 @@ using System.IO.Hashing;
 
 using Jaahas.WriteAheadLog.Internal;
 
+using Microsoft.Extensions.ObjectPool;
+
 namespace Jaahas.WriteAheadLog;
 
 /// <summary>
@@ -15,7 +17,12 @@ namespace Jaahas.WriteAheadLog;
 ///   holding the serialized entry.
 /// </remarks>
 public class LogEntry : IDisposable {
-    
+
+    /// <summary>
+    /// The pool used to rent and return <see cref="LogEntry"/> instances.
+    /// </summary>
+    private static readonly ObjectPool<LogEntry> s_pool = new DefaultObjectPool<LogEntry>(new PooledLogEntryPolicy());
+
     /// <summary>
     /// The size of the serialized log entry header in bytes.
     /// </summary>
@@ -29,64 +36,33 @@ public class LogEntry : IDisposable {
     /// <summary>
     /// The buffer holding the serialized entry.
     /// </summary>
-    private readonly byte[] _buffer;
+    private byte[] _buffer = null!;
 
     /// <summary>
     /// The sequence ID for the log entry.
     /// </summary>
-    public ulong SequenceId { get; }
+    public ulong SequenceId { get; private set; }
     
     /// <summary>
     /// The timestamp of the log entry, measured in ticks.
     /// </summary>
-    public long Timestamp { get; }
+    public long Timestamp { get; private set; }
 
     /// <summary>
     /// The data segment of the log entry, which contains the actual message payload.
     /// </summary>
-    public ArraySegment<byte> Data {
-        get {
-            ObjectDisposedException.ThrowIf(_disposed, this);
-            return field;
-        }
-    }
+    public ArraySegment<byte> Data { get; private set; }
     
     /// <summary>
     /// The total size of the log entry in bytes, including the header, body, and checksum.
     /// </summary>
-    public int TotalSize { get; }
+    public int TotalSize { get; private set; }
 
     
     /// <summary>
     /// Creates a new <see cref="LogEntry"/> instance.
     /// </summary>
-    /// <param name="sequenceId">
-    ///   The sequence ID for the log entry.
-    /// </param>
-    /// <param name="timestamp">
-    ///   The timestamp for the log entry, measured in ticks.
-    /// </param>
-    /// <param name="buffer">
-    ///   The buffer holding the serialized entry.
-    /// </param>
-    /// <param name="offset">
-    ///   The offset in the buffer where the data segment of the log entry starts.
-    /// </param>
-    /// <param name="count">
-    ///   The number of bytes in the data segment of the log entry.
-    /// </param>
-    /// <param name="totalSize">
-    ///   The total size of the log entry in bytes, including the header, body, and checksum.
-    /// </param>
-    private LogEntry(ulong sequenceId, long timestamp, byte[] buffer, int offset, int count, int totalSize) {
-        SequenceId = sequenceId;
-        Timestamp = timestamp;
-        
-        _buffer = buffer;
-        Data = new ArraySegment<byte>(_buffer, offset, count);
-        
-        TotalSize = totalSize;
-    }
+    private LogEntry() { }
 
     
     /// <summary>
@@ -216,7 +192,7 @@ public class LogEntry : IDisposable {
             return false;
         }
         
-        // Checksum matches, create the log entry.
+        // Checksum matches, create the log entry instance.
         
         // [0,4) = magic number
         // [4,8) = message length
@@ -224,8 +200,10 @@ public class LogEntry : IDisposable {
         // [16,24) = timestamp
         var sequenceId = BinaryPrimitives.ReadUInt64LittleEndian(bufferSpan[8..]);
         var timestamp = BinaryPrimitives.ReadInt64LittleEndian(bufferSpan[16..]);
+
+        entry = s_pool.Get();
+        entry.Update(sequenceId, timestamp, buffer, 24, messageLength, 24 + messageLength + 4);
         
-        entry = new LogEntry(sequenceId, timestamp, buffer, 24, messageLength, 24 + messageLength + 4);
         return true;
     }
 
@@ -328,15 +306,60 @@ public class LogEntry : IDisposable {
     }
 
 
+    private void Update(ulong sequenceId, long timestamp, byte[] buffer, int offset, int count, int totalSize) {
+        SequenceId = sequenceId;
+        Timestamp = timestamp;
+        if (_buffer != null) {
+            ArrayPool<byte>.Shared.Return(_buffer);
+        }
+
+        _buffer = buffer;
+        Data = new ArraySegment<byte>(_buffer, offset, count);
+        TotalSize = totalSize;
+
+        _disposed = false;
+    }
+    
+
+    private void Reset() {
+        if (_buffer != null) {
+            ArrayPool<byte>.Shared.Return(_buffer);
+            _buffer = null!;
+        }
+        SequenceId = 0;
+        Timestamp = 0;
+        Data = default;
+        TotalSize = 0;
+    }
+
+
     /// <inheritdoc/>
     public void Dispose() {
         if (_disposed) {
             return;
         }
         
-        ArrayPool<byte>.Shared.Return(_buffer);
-        
+        s_pool.Return(this);
+
         _disposed = true;
+    }
+    
+
+    /// <summary>
+    /// Policy for renting and returning <see cref="LogEntry"/> instances from the object pool.
+    /// </summary>
+    private class PooledLogEntryPolicy : PooledObjectPolicy<LogEntry> {
+
+        /// <inheritdoc />
+        public override LogEntry Create() => new LogEntry();
+
+
+        /// <inheritdoc />
+        public override bool Return(LogEntry obj) {
+            obj.Reset();
+            return true;
+        }
+
     }
     
 }

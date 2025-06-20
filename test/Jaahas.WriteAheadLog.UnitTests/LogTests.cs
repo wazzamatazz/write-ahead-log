@@ -407,4 +407,127 @@ public class LogTests {
         Assert.AreEqual(9UL, secondSegment.LastSequenceId);
     }
 
+
+    [TestMethod]
+    public async Task ShouldManuallyCleanUpExpiredSegmentsWhenCountIsExceeded() {
+        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+            DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
+            SegmentRetentionLimit = 2,
+            MaxSegmentMessageCount = 100,
+            SegmentCleanupInterval = TimeSpan.Zero
+        });
+        
+        using var msg = new LogMessage();
+
+        for (var i = 0; i < 499; i++) {
+            msg.Reset();
+            msg.Write(Enumerable.Repeat((byte) 1, 64).ToArray());
+            await log.WriteAsync(msg);
+        }
+
+        await log.FlushAsync();
+        
+        var segments = await log.GetSegmentsAsync();
+        Assert.AreEqual(5, segments.Count);
+
+        await log.CleanupAsync();
+        segments = await log.GetSegmentsAsync();
+        // Writer segment + 2 closed segments should remain
+        Assert.AreEqual(3, segments.Count);
+    }
+    
+    
+    [TestMethod]
+    public async Task ShouldManuallyCleanUpExpiredSegmentsWhenRetentionPeriodIsExceeded() {
+        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+            DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
+            MaxSegmentMessageCount = 100,
+            SegmentRetentionPeriod = TimeSpan.FromMilliseconds(1),
+            SegmentCleanupInterval = TimeSpan.Zero
+        });
+        
+        using var msg = new LogMessage();
+
+        for (var i = 0; i < 499; i++) {
+            msg.Reset();
+            msg.Write(Enumerable.Repeat((byte) 1, 64).ToArray());
+            await log.WriteAsync(msg);
+        }
+
+        await log.FlushAsync();
+        
+        var segments = await log.GetSegmentsAsync();
+        Assert.AreEqual(5, segments.Count);
+
+        // Wait long enough that all closed segments should be expired
+        await Task.Delay(10);
+        
+        await log.CleanupAsync();
+        segments = await log.GetSegmentsAsync();
+        // Only the writer segment should remain
+        Assert.AreEqual(1, segments.Count);
+    }
+    
+    
+    [TestMethod]
+    public async Task ShouldAutomaticallyCleanUpExpiredSegmentsWhenCountIsExceeded() {
+        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+            DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
+            SegmentRetentionLimit = 2,
+            MaxSegmentMessageCount = 100,
+            SegmentCleanupInterval = TimeSpan.FromMilliseconds(50)
+        });
+        
+        using var msg = new LogMessage();
+
+        for (var i = 0; i < 499; i++) {
+            msg.Reset();
+            msg.Write(Enumerable.Repeat((byte) 1, 64).ToArray());
+            await log.WriteAsync(msg);
+        }
+
+        await log.FlushAsync();
+        
+        var segments = await log.GetSegmentsAsync();
+        Assert.AreEqual(5, segments.Count);
+
+        // Wait for the cleanup to occur
+        await Task.Delay(100);
+        
+        segments = await log.GetSegmentsAsync();
+        // Writer segment + 2 closed segments should remain
+        Assert.AreEqual(3, segments.Count);
+    }
+    
+    
+    [TestMethod]
+    public async Task ShouldAutomaticallyCleanUpExpiredSegmentsWhenRetentionPeriodIsExceeded() {
+        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+            DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
+            MaxSegmentMessageCount = 100,
+            SegmentRetentionPeriod = TimeSpan.FromMilliseconds(1),
+            SegmentCleanupInterval = TimeSpan.FromMilliseconds(50)
+        });
+        
+        using var msg = new LogMessage();
+
+        for (var i = 0; i < 499; i++) {
+            msg.Reset();
+            msg.Write(Enumerable.Repeat((byte) 1, 64).ToArray());
+            await log.WriteAsync(msg);
+        }
+
+        await log.FlushAsync();
+        
+        var segments = await log.GetSegmentsAsync();
+        Assert.AreEqual(5, segments.Count);
+
+        // Wait for the cleanup to occur
+        await Task.Delay(100);
+        
+        segments = await log.GetSegmentsAsync();
+        // Only the writer segment should remain
+        Assert.AreEqual(1, segments.Count);
+    }
+
 }

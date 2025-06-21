@@ -40,8 +40,7 @@ public class DependencyInjectionTests {
         var log = app.Services.GetRequiredService<Log>();
         await log.InitAsync(TestContext.CancellationTokenSource.Token);
 
-        using var msg = new LogMessage(Enumerable.Repeat((byte) 1, 100).ToArray());
-        await log.WriteAsync(msg, TestContext.CancellationTokenSource.Token);
+        await log.WriteAsync(Enumerable.Repeat((byte) 1, 100).ToArray(), TestContext.CancellationTokenSource.Token);
     }
     
 
@@ -57,8 +56,7 @@ public class DependencyInjectionTests {
         var log = app.Services.GetRequiredKeyedService<Log>(TestContext.TestName!);
         await log.InitAsync(TestContext.CancellationTokenSource.Token);
 
-        using var msg = new LogMessage(Enumerable.Repeat((byte) 1, 100).ToArray());
-        await log.WriteAsync(msg, TestContext.CancellationTokenSource.Token);
+        await log.WriteAsync(Enumerable.Repeat((byte) 1, 100).ToArray(), TestContext.CancellationTokenSource.Token);
     }
 
 }

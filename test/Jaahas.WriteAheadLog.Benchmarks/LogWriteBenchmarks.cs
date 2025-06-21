@@ -45,13 +45,12 @@ public class LogWriteBenchmarks {
         });
         
         await log.InitAsync();
-        using var msg = new LogMessage();
+        await using var publisher = new LogWriter();
         
         for (var i = 1; i <= 100_000; i++) {
-            msg.Reset();
-            msg.GetSpan(256)[..256].Fill(1);
-            msg.Advance(256);
-            await log.WriteAsync(msg);
+            publisher.GetSpan(256)[..256].Fill(1);
+            publisher.Advance(256);
+            await publisher.WriteToLogAsync(log);
         }
     }
 

@@ -33,13 +33,12 @@ public class SparseIndexBenchmarks {
         });
         
         await _log.InitAsync();
-        using var msg = new LogMessage();
+        await using var publisher = new LogWriter();
         
         for (var i = 1; i <= MessageCount; i++) {
-            msg.Reset();
-            msg.GetSpan(256)[..256].Fill(1);
-            msg.Advance(256);
-            await _log.WriteAsync(msg);
+            publisher.GetSpan(256)[..256].Fill(1);
+            publisher.Advance(256);
+            await publisher.WriteToLogAsync(_log);
         }
 
         await _log.RolloverAsync();

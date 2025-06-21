@@ -44,13 +44,12 @@ public class LogTests {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!)
         });
         
-        using var msg1 = new LogMessage(Enumerable.Repeat((byte) 1, 64).ToArray());
-        await log.WriteAsync(msg1);
+        await log.WriteAsync(Enumerable.Repeat((byte) 1, 64).ToArray());
+        await log.WriteAsync(Enumerable.Repeat((byte) 2, 64).ToArray());
         
-        await Task.Delay(10);
-        
-        using var msg2 = new LogMessage(Enumerable.Repeat((byte) 2, 64).ToArray());
-        await log.WriteAsync(msg2);
+        var segments = await log.GetSegmentsAsync(TestContext.CancellationTokenSource.Token);
+        Assert.AreEqual(1, segments.Count);
+        Assert.AreEqual(2, segments[0].MessageCount);
     }
     
     
@@ -62,16 +61,13 @@ public class LogTests {
         
         var writeResults = new List<WriteResult>();
 
-        using var msg1 = new LogMessage(Enumerable.Repeat((byte) 1, 64).ToArray());
-        writeResults.Add(await log.WriteAsync(msg1));
+        writeResults.Add(await log.WriteAsync(Enumerable.Repeat((byte) 1, 64).ToArray()));
         
         await Task.Delay(10);
         
-        using var msg2 = new LogMessage(Enumerable.Repeat((byte) 2, 64).ToArray());
-        writeResults.Add(await log.WriteAsync(msg2));
+        writeResults.Add(await log.WriteAsync(Enumerable.Repeat((byte) 2, 64).ToArray()));
         
-        using var msg3 = new LogMessage(Enumerable.Repeat((byte) 3, 64).ToArray());
-        writeResults.Add(await log.WriteAsync(msg3));
+        writeResults.Add(await log.WriteAsync(Enumerable.Repeat((byte) 3, 64).ToArray()));
 
         await log.FlushAsync();
         
@@ -104,13 +100,8 @@ public class LogTests {
         
         var writeResults = new List<WriteResult>();
 
-        using var msg = new LogMessage();
-        
         for (var i = 0; i < 5; i++) {
-            msg.Reset();
-            msg.GetSpan(64)[..64].Fill((byte) (i + 1));
-            msg.Advance(64);
-            writeResults.Add(await log.WriteAsync(msg));
+            writeResults.Add(await log.WriteAsync(Enumerable.Repeat((byte) i, 64).ToArray()));
         }
 
         await log.FlushAsync();
@@ -147,13 +138,8 @@ public class LogTests {
         
         var writeResults = new List<WriteResult>();
 
-        using var msg = new LogMessage();
-        
         for (var i = 0; i < 5; i++) {
-            msg.Reset();
-            msg.GetSpan(64)[..64].Fill((byte) (i + 1));
-            msg.Advance(64);
-            writeResults.Add(await log.WriteAsync(msg));
+            writeResults.Add(await log.WriteAsync(Enumerable.Repeat((byte) i, 64).ToArray()));
             await Task.Delay(10);
         }
 
@@ -193,13 +179,8 @@ public class LogTests {
         
         var writeResults = new List<WriteResult>();
 
-        using var msg = new LogMessage();
-        
         for (var i = 0; i < 10; i++) {
-            msg.Reset();
-            msg.GetSpan(64)[..64].Fill((byte) (i + 1));
-            msg.Advance(64);
-            writeResults.Add(await log.WriteAsync(msg));
+            writeResults.Add(await log.WriteAsync(Enumerable.Repeat((byte) i, 64).ToArray()));
         }
 
         await log.FlushAsync();
@@ -241,14 +222,11 @@ public class LogTests {
         var @lock = new Nito.AsyncEx.AsyncAutoResetEvent(set: true);
 
         _ = Task.Run(async () => {
-            using var msg = new LogMessage();
             var rnd = new Random();
             try {
                 while (!TestContext.CancellationTokenSource.IsCancellationRequested) {
                     await @lock.WaitAsync(TestContext.CancellationTokenSource.Token);
-                    msg.Reset();
-                    msg.Write(BitConverter.GetBytes(rnd.NextDouble()));
-                    await log.WriteAsync(msg, TestContext.CancellationTokenSource.Token);
+                    await log.WriteAsync(BitConverter.GetBytes(rnd.NextDouble()), TestContext.CancellationTokenSource.Token);
                     await log.FlushAsync(TestContext.CancellationTokenSource.Token);
                 }
             }
@@ -284,10 +262,7 @@ public class LogTests {
         });
         
         // Write a message to ensure the log has created the first segment
-        using var msg = new LogMessage();
-        msg.GetSpan(64)[..64].Fill(1);
-        msg.Advance(64);
-        await log.WriteAsync(msg);
+        await log.WriteAsync(Enumerable.Repeat((byte) 1, 64).ToArray());
 
         var segments = await log.GetSegmentsAsync(TestContext.CancellationTokenSource.Token);
         Assert.AreEqual(1, segments.Count);
@@ -307,13 +282,8 @@ public class LogTests {
             MaxSegmentMessageCount = 5
         });
         
-        using var msg = new LogMessage();
-        
         for (var i = 0; i < 9; i++) {
-            msg.Reset();
-            msg.GetSpan(64)[..64].Fill((byte) (i + 1));
-            msg.Advance(64);
-            await log.WriteAsync(msg);
+            await log.WriteAsync(Enumerable.Repeat((byte) i, 64).ToArray());
         }
 
         var segments = await log.GetSegmentsAsync(TestContext.CancellationTokenSource.Token);
@@ -338,14 +308,9 @@ public class LogTests {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
             MaxSegmentSizeBytes = 64 + 5 * (24 + 64 + 4) // 64 bytes for segment header, 5 messages with: 24 bytes header, 64 bytes body, and 4 bytes checksum
         });
-        
-        using var msg = new LogMessage();
-        
+
         for (var i = 0; i < 9; i++) {
-            msg.Reset();
-            msg.GetSpan(64)[..64].Fill((byte) (i + 1));
-            msg.Advance(64);
-            await log.WriteAsync(msg);
+            await log.WriteAsync(Enumerable.Repeat((byte) i, 64).ToArray());
         }
 
         var segments = await log.GetSegmentsAsync(TestContext.CancellationTokenSource.Token);
@@ -371,13 +336,8 @@ public class LogTests {
             MaxSegmentTimeSpan = TimeSpan.FromSeconds(1)
         });
         
-        using var msg = new LogMessage();
-        
         for (var i = 0; i < 5; i++) {
-            msg.Reset();
-            msg.GetSpan(64)[..64].Fill((byte) (i + 1));
-            msg.Advance(64);
-            await log.WriteAsync(msg);
+            await log.WriteAsync(Enumerable.Repeat((byte) i, 64).ToArray());
         }
         
         // Wait for the segment to roll over.
@@ -386,10 +346,7 @@ public class LogTests {
         // Write more messages to the new segment
 
         for (var i = 5; i < 9; i++) {
-            msg.Reset();
-            msg.GetSpan(64)[..64].Fill((byte) (i + 1));
-            msg.Advance(64);
-            await log.WriteAsync(msg);
+            await log.WriteAsync(Enumerable.Repeat((byte) i, 64).ToArray());
         }
         
         var segments = await log.GetSegmentsAsync(TestContext.CancellationTokenSource.Token);
@@ -417,12 +374,8 @@ public class LogTests {
             SegmentCleanupInterval = TimeSpan.Zero
         });
         
-        using var msg = new LogMessage();
-
         for (var i = 0; i < 499; i++) {
-            msg.Reset();
-            msg.Write(Enumerable.Repeat((byte) 1, 64).ToArray());
-            await log.WriteAsync(msg);
+            await log.WriteAsync(Enumerable.Repeat((byte) i, 64).ToArray());
         }
 
         await log.FlushAsync();
@@ -446,12 +399,8 @@ public class LogTests {
             SegmentCleanupInterval = TimeSpan.Zero
         });
         
-        using var msg = new LogMessage();
-
         for (var i = 0; i < 499; i++) {
-            msg.Reset();
-            msg.Write(Enumerable.Repeat((byte) 1, 64).ToArray());
-            await log.WriteAsync(msg);
+            await log.WriteAsync(Enumerable.Repeat((byte) i, 64).ToArray());
         }
 
         await log.FlushAsync();
@@ -478,12 +427,8 @@ public class LogTests {
             SegmentCleanupInterval = TimeSpan.FromMilliseconds(50)
         });
         
-        using var msg = new LogMessage();
-
         for (var i = 0; i < 499; i++) {
-            msg.Reset();
-            msg.Write(Enumerable.Repeat((byte) 1, 64).ToArray());
-            await log.WriteAsync(msg);
+            await log.WriteAsync(Enumerable.Repeat((byte) i, 64).ToArray());
         }
 
         await log.FlushAsync();
@@ -509,12 +454,8 @@ public class LogTests {
             SegmentCleanupInterval = TimeSpan.FromMilliseconds(50)
         });
         
-        using var msg = new LogMessage();
-
         for (var i = 0; i < 499; i++) {
-            msg.Reset();
-            msg.Write(Enumerable.Repeat((byte) 1, 64).ToArray());
-            await log.WriteAsync(msg);
+            await log.WriteAsync(Enumerable.Repeat((byte) i, 64).ToArray());
         }
 
         await log.FlushAsync();

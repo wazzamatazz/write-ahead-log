@@ -45,14 +45,12 @@ public sealed class FileSegmentWriterTests {
     public async Task ShouldUpdateSegmentHeaderAfterWrite() {
         var filePath = Path.Combine(s_tempPath!, $"{TestContext!.TestName}.wal");
         await using var segmentWriter = new FileSegmentWriter(new FileSegmentWriterOptions(TestContext.TestName!, filePath, null, TimeSpan.FromSeconds(1)));
-
-        using var msg1 = new LogMessage(Enumerable.Repeat((byte) 1, 64).ToArray());
-        await segmentWriter.WriteAsync(msg1, 1);
+        
+        await segmentWriter.WriteAsync(Enumerable.Repeat((byte) 1, 64).ToArray(), 1);
 
         await Task.Delay(10);
         
-        using var msg2 = new LogMessage(Enumerable.Repeat((byte) 2, 64).ToArray());
-        await segmentWriter.WriteAsync(msg2, 2);
+        await segmentWriter.WriteAsync(Enumerable.Repeat((byte) 2, 64).ToArray(), 2);
         
         Assert.AreEqual(2u, segmentWriter.Header.MessageCount);
         // 24 byte header + 64 byte body + 4 byte checksum x 2 messages

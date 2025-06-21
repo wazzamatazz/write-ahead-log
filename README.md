@@ -24,29 +24,29 @@ To write log entries to the write-ahead log, use the `Log.WriteAsync` method or 
 await log.WriteAsync(Encoding.UTF8.GetBytes("Hello, World!"));
 ```
 
-You can also use the `LogWriter` class for scenarios where you require an `IBufferWriter<byte>` to write your log entries to. After writing your message to the `LogWriter`, you must call the `WriteToLogAsync` method to write the buffered data to the log as a new message:
+## Using the `LogWriter` Type
+
+You can use the `LogWriter` class for scenarios where you require an `IBufferWriter<byte>` to write your log entries to. After writing your message to the `LogWriter`, you must call the `WriteToLogAsync` method to write the buffered data to the log as a new message.
+
+The `LogWriter` type must be disposed after use to release rented resources. Each call to `WriteToLogAsync` resets the underlying buffer, meaning that you can also reuse the same `LogWriter` instance for multiple writes.
+
+
+## Using the `JsonLogWriter` Type
+
+The `JsonLogWriter` class can be used to automatically serialize structures log messages to JSON using `System.Text.Json` before writing them to the log:
 
 ```csharp
-await using var writer = new LogWriter();
-await using var jsonWriter = new Utf8JsonWriter(writer);
-
-JsonSerializer.Serialize(jsonWriter, new { Message = "Hello, World!" });
-await writer.WriteToLogAsync(log);
+await using var jsonWriter = new JsonLogWriter();
+await jsonWriter.WriteToLogAsync(log, new {)
+    Message = "Hello, World!"
+});
+await jsonWriter.WriteToLogAsync(log, new {)
+    Message = "Hello again!"
+});
 ```
 
-The `LogWriter` type must be disposed after use to release rented resources. Each call to `WriteToLogAsync` resets the underlying buffer, meaning that you can also reuse the same `LogWriter` instance for multiple writes. For example:
+The `JsonLogWriter` class uses `LogWriter` internally and as such, it also requires disposal after use to release rented resources.
 
-```csharp
-public async Task WriteMultipleEntriesAsync<T>(IEnumerable<T> data, Log log) {
-    await using var writer = new LogWriter();
-    await using var jsonWriter = new Utf8JsonWriter(writer);
-    
-    foreach (var item in data) {
-        JsonSerializer.Serialize(jsonWriter, item);
-        await writer.WriteToLogAsync(log);
-    }
-}
-```
 
 # Reading Log Entries
 

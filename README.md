@@ -26,14 +26,33 @@ await log.WriteAsync(Encoding.UTF8.GetBytes("Hello, World!"));
 
 ## Using the `LogWriter` Type
 
-You can use the `LogWriter` class for scenarios where you require an `IBufferWriter<byte>` to write your log entries to. After writing your message to the `LogWriter`, you must call the `WriteToLogAsync` method to write the buffered data to the log as a new message.
+You can use the `LogWriter` class for scenarios where you require an `IBufferWriter<byte>` to write your log entries to. After writing your message to the `LogWriter`, you must call the `WriteToLogAsync` method to write the buffered data to the log as a new message:
+
+```csharp
+[MessagePackObject]
+public class MyMessage {
+
+    [Key(0)]
+    public string Message { get; set; }
+
+}
+
+// ...
+
+await using var writer = new LogWriter();
+MessagePackSerializer.Serialize(writer, new MyMessage() {
+    Message = "Hello, World!"
+});
+
+await writer.WriteToLogAsync(log);
+```
 
 The `LogWriter` type must be disposed after use to release rented resources. Each call to `WriteToLogAsync` resets the underlying buffer, meaning that you can also reuse the same `LogWriter` instance for multiple writes.
 
 
 ## Using the `JsonLogWriter` Type
 
-The `JsonLogWriter` class can be used to automatically serialize structures log messages to JSON using `System.Text.Json` before writing them to the log:
+The `JsonLogWriter` class can be used to automatically serialize structured log messages to JSON using `System.Text.Json` before writing them to the log:
 
 ```csharp
 await using var jsonWriter = new JsonLogWriter();

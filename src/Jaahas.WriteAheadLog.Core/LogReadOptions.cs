@@ -9,7 +9,7 @@ namespace Jaahas.WriteAheadLog;
 /// <param name="Timestamp">
 ///   The timestamp to start reading from, measured in ticks.
 /// </param>
-/// <param name="Count">
+/// <param name="Limit">
 ///   The maximum number of messages to read.
 /// </param>
 /// <param name="WatchForChanges">
@@ -21,4 +21,4 @@ namespace Jaahas.WriteAheadLog;
 ///   If both <paramref name="SequenceId"/> and <paramref name="Timestamp"/> are specified,
 ///   <paramref name="Timestamp"/> takes precedence.
 /// </remarks>
-public readonly record struct LogReadOptions(ulong SequenceId = 0UL, long Timestamp = -1, long Count = -1, bool WatchForChanges = false);
+public readonly record struct LogReadOptions(ulong SequenceId = 0UL, long Timestamp = -1, long Limit = -1, bool WatchForChanges = false);

@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Collections.Concurrent;
 using System.Collections.Immutable;
 using System.Diagnostics.CodeAnalysis;
@@ -18,20 +19,27 @@ namespace Jaahas.WriteAheadLog;
 /// <remarks>
 ///
 /// <para>
-///   The log must be initialized before any operations can be performed via <see cref="InitAsync"/>.
+///   Incoming messages are defined using read-only byte sequences. Use the <see cref="WriteAsync"/>
+///   method or an extension method overload defined in <see cref="LogExtensions"/> to write
+///   messages to the log. 
 /// </para>
 ///
 /// <para>
-///   Use the <see cref="WriteAsync"/> method to write messages to the log. Incoming messages are
-///   defined using the <see cref="LogMessage"/> type. <see cref="LogMessage"/> makes extensive use
-///   of pooled buffers. Remember to dispose of <see cref="LogMessage"/> instances when they are no
-///   longer needed to ensure that the message's buffer is returned to the pool.
+///   You can also use the <see cref="LogWriter"/> class in scenarios where it is preferable to
+///   write log message payloads using an <see cref="IBufferWriter{T}"/> (for example, when
+///   serializing data to JSON using <see cref="System.Text.Json.JsonSerializer"/>).
 /// </para>
 ///
 /// <para>
-///   You can reuse the same <see cref="LogMessage"/> instance to write multiple messages by calling
-///   the <see cref="LogMessage.Reset"/> method to reset the underlying buffer after writing the
-///   message to the log.
+///   Messages written to the log are written to the current writable segment and assigned a
+///   sequence ID and timestamp. You can read messages from the log using the <see cref="ReadAllAsync"/>
+///   method or an extension method defined in <see cref="LogExtensions"/>.
+/// </para>
+///
+/// <para>
+///   The log supports automatic segment rollover based on segment size, message count, and/or
+///   time. Old segments can be automatically cleaned up after a retention period or when the
+///   number of segments exceeds a maximum count.
 /// </para>
 /// 
 /// </remarks>
@@ -218,7 +226,7 @@ public sealed partial class Log : IAsyncDisposable {
     /// <summary>
     /// Writes a log message to the current segment.
     /// </summary>
-    /// <param name="message">
+    /// <param name="data">
     ///  The log message to write.
     /// </param>
     /// <param name="cancellationToken">
@@ -231,14 +239,13 @@ public sealed partial class Log : IAsyncDisposable {
     ///   The log has been disposed.
     /// </exception>
     /// <exception cref="ArgumentNullException">
-    ///   <paramref name="message"/> is <see langword="null"/>.
+    ///   <paramref name="data"/> is <see langword="null"/>.
     /// </exception>
     /// <remarks>
     ///   Calling this method will initialize the log if it has not already been initialized.
     /// </remarks>
-    public async ValueTask<WriteResult> WriteAsync(LogMessage message, CancellationToken cancellationToken = default) {
+    public async ValueTask<WriteResult> WriteAsync(ReadOnlySequence<byte> data, CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentNullException.ThrowIfNull(message);
 
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);
         await InitCoreAsync(cts.Token).ConfigureAwait(false);
@@ -246,13 +253,13 @@ public sealed partial class Log : IAsyncDisposable {
         using var handle = await _writeLock.LockAsync(cts.Token).ConfigureAwait(false);
         
         // Check if we need to roll over to a new segment.
-        var rolloverCheck = IsRolloverRequired(message.Stream?.Length ?? 0);
+        var rolloverCheck = IsRolloverRequired(data.Length);
         if (rolloverCheck.Rollover) {
             await RolloverCoreAsync(rolloverCheck.Reason, cts.Token).ConfigureAwait(false);
         }
 
         var timestamp = _timeProvider.GetTimestamp();
-        var bytesWritten = await _writer!.WriteAsync(message, ++_lastSequenceId, timestamp, cts.Token).ConfigureAwait(false);
+        var bytesWritten = await _writer!.WriteAsync(data, ++_lastSequenceId, timestamp, cts.Token).ConfigureAwait(false);
         _lastTimestamp = timestamp;
 
         if (_options.SparseIndexInterval > 0 && _writer.Header.MessageCount % _options.SparseIndexInterval == 0) {
@@ -263,7 +270,7 @@ public sealed partial class Log : IAsyncDisposable {
         
         return new WriteResult(_lastSequenceId, _lastTimestamp);
     }
-
+    
 
     /// <summary>
     /// Flushes the current log segment to disk.
@@ -315,7 +322,7 @@ public sealed partial class Log : IAsyncDisposable {
 
 
     /// <summary>
-    /// Cleans up up the log by removing old segments that are no longer needed based on the log's
+    /// Cleans up the log by removing old segments that are no longer needed based on the log's
     /// maximum segment count and retention period.
     /// </summary>
     /// <param name="cancellationToken">
@@ -422,7 +429,7 @@ public sealed partial class Log : IAsyncDisposable {
             status = new ReadOperationStatus(segmentsToRead, options.Value.WatchForChanges);
             _readOperations[status.Id] = status;
             
-            LogRead(status.Id, options.Value.SequenceId, options.Value.Timestamp, options.Value.Count, options.Value.WatchForChanges);
+            LogRead(status.Id, options.Value.SequenceId, options.Value.Timestamp, options.Value.Limit, options.Value.WatchForChanges);
         }
 
         try {
@@ -511,7 +518,7 @@ public sealed partial class Log : IAsyncDisposable {
                         
                         yield return item;
                         
-                        if (options.Value.Count > 0 && ++count >= options.Value.Count) {
+                        if (options.Value.Limit > 0 && ++count >= options.Value.Limit) {
                             // If we have read enough messages, we can stop reading.
                             yield break;
                         }

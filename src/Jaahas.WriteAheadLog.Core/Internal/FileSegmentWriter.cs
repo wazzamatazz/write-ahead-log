@@ -122,12 +122,12 @@ internal sealed partial class FileSegmentWriter : SegmentWriter {
 
 
     /// <inheritdoc />
-    protected override async ValueTask<long> WriteMessageCoreAsync(LogMessage message, ulong sequenceId, long timestamp) {
+    protected override async ValueTask<long> WriteMessageCoreAsync(ReadOnlySequence<byte> message, ulong sequenceId, long timestamp) {
         var bytesWritten = LogEntry.Write(
             _fileStreamWriter, 
             sequenceId, 
             timestamp, 
-            message.Stream?.GetReadOnlySequence() ?? new ReadOnlySequence<byte>(ReadOnlyMemory<byte>.Empty));
+            message);
         
         LogAfterWriteMessage(sequenceId, timestamp, bytesWritten);
         WriteMemoryMappedHeader();

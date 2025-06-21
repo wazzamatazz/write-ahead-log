@@ -100,14 +100,14 @@ await foreach (var entry in log.ReadAllAsync(readOptions)) {
 
 # File Structure
 
-Each write-ahead log file contains a segment, which is a collection of log entries. The log entries are written sequentially to the segment, and each segment is stored in a separate file. The segment file begins with a fixed-size header that contains metadata about the segment, followed by a series of log entries. Each log entry consists of a header, a variable-length payload, and a footer.
+Log entries are written sequentially to the log's current writable segment, and each segment is stored in a separate file. A segment file begins with a fixed-size header that contains metadata about the segment, followed by a series of log entries. Each log entry consists of a header, a variable-length payload, and a footer.
 
 Segment files use the naming convention `{yyyyMMddHHmmss}-{UUIDv7}.wal`, where `{yyyyMMddHHmmss}` is the timestamp that the segment was created at (truncated to the nearest second) and `{UUIDv7}` is a UUIDv7 value that is generated using the segment creation time. This allows for easy identification and ordering of segments based on their creation time.
 
 
 ## Segment Header
 
-The segment header is a fixed-size 128 byte structure that contains metadata about the segment:
+The segment header is a fixed-length 128 byte structure that contains metadata about the segment:
 
 ```mermaid
 ---
@@ -133,7 +133,7 @@ packet-beta
 
 ## Log Entry
 
-A log entry is a variable-size structure that contains the actual data written to the log. It consists of a header, a variable-length payload and a footer. For example, a log entry with a payload of 100 bytes would look like this:
+A log entry is a variable-length structure that contains the actual data written to the log. It consists of a fixed-length header, a variable-length payload and a fixed-length footer. For example, a log entry with a payload of 100 bytes would look like this:
 
 ```mermaid
 ---

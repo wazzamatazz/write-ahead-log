@@ -1,0 +1,121 @@
+using System.Buffers;
+using System.Runtime.CompilerServices;
+
+using Jaahas.WriteAheadLog.Internal;
+
+namespace Jaahas.WriteAheadLog;
+
+/// <summary>
+/// Extensions for <see cref="Log"/>.
+/// </summary>
+public static class LogExtensions {
+    
+    /// <summary>
+    /// Writes a log message to the segment with the specified sequence ID.
+    /// </summary>
+    /// <param name="writer">
+    ///   The <see cref="SegmentWriter"/> to write the log message to.
+    /// </param>
+    /// <param name="data">
+    ///   The log message to write to the segment.
+    /// </param>
+    /// <param name="sequenceId">
+    ///   The sequence ID of the log message. This should be unique and monotonically increasing.
+    /// </param>
+    /// <param name="cancellationToken">
+    ///   The cancellation token for the operation.
+    /// </param>
+    /// <returns>
+    ///   The number of bytes written to the segment.
+    /// </returns>
+    internal static ValueTask<long> WriteAsync(this SegmentWriter writer, ReadOnlyMemory<byte> data, ulong sequenceId, CancellationToken cancellationToken = default) {
+        ArgumentNullException.ThrowIfNull(writer);
+        return writer.WriteAsync(new ReadOnlySequence<byte>(data), sequenceId, cancellationToken);
+    }
+    
+
+    /// <summary>
+    /// Writes a log message to the current segment.
+    /// </summary>
+    /// <param name="log">
+    ///   The <see cref="Log"/> to write the log message to.
+    /// </param>
+    /// <param name="data">
+    ///   The log message to write.
+    /// </param>
+    /// <param name="cancellationToken">
+    ///   The cancellation token for the operation.
+    /// </param>
+    /// <returns>
+    ///   A <see cref="WriteResult"/> containing the sequence ID and timestamp of the written
+    ///   message.
+    /// </returns>
+    public static ValueTask<WriteResult> WriteAsync(this Log log, ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default) {
+        ArgumentNullException.ThrowIfNull(log);
+        return log.WriteAsync(new ReadOnlySequence<byte>(data), cancellationToken);
+    }
+    
+
+    /// <summary>
+    /// Reads log entries starting from a specific sequence ID.
+    /// </summary>
+    /// <param name="log">
+    ///   The <see cref="Log"/> to read from.
+    /// </param>
+    /// <param name="sequenceId">
+    ///   The sequence ID to start reading from. Specify 0 to read from the beginning of the log.
+    /// </param>
+    /// <param name="count">
+    ///   The maximum number of entries to read. Specify less than 1 for no limit.
+    /// </param>
+    /// <param name="watchForChanges">
+    ///   If <see langword="true"/>, the operation will continue to watch for changes once it
+    ///   reaches the end of the log. Otherwise, the operation will complete when it reaches the
+    ///   end of the log.
+    /// </param>
+    /// <param name="cancellationToken">
+    ///   The cancellation token for the operation.
+    /// </param>
+    /// <returns>
+    ///   An asynchronous sequence of <see cref="LogEntry"/> instances read from the log.
+    /// </returns>
+    public static async IAsyncEnumerable<LogEntry> ReadFromPositionAsync(this Log log, ulong sequenceId = 0, long count = -1, bool watchForChanges = false, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
+        ArgumentNullException.ThrowIfNull(log);
+        await foreach (var entry in log.ReadAllAsync(new LogReadOptions(SequenceId: sequenceId, Limit: count, WatchForChanges: watchForChanges), cancellationToken).ConfigureAwait(false)) {
+            yield return entry;
+        }
+    }
+    
+    
+    /// <summary>
+    /// Reads log entries starting from a specific timestamp.
+    /// </summary>
+    /// <param name="log">
+    ///   The <see cref="Log"/> to read from.
+    /// </param>
+    /// <param name="timestamp">
+    ///   The timestamp to start reading from. Specify less than 1 to read from the beginning of
+    ///   the log.
+    /// </param>
+    /// <param name="count">
+    ///   The maximum number of entries to read. Specify less than 1 for no limit.
+    /// </param>
+    /// <param name="watchForChanges">
+    ///   If <see langword="true"/>, the operation will continue to watch for changes once it
+    ///   reaches the end of the log. Otherwise, the operation will complete when it reaches the
+    ///   end of the log.
+    /// </param>
+    /// <param name="cancellationToken">
+    ///   The cancellation token for the operation.
+    /// </param>
+    /// <returns>
+    ///   An asynchronous sequence of <see cref="LogEntry"/> instances read from the log.
+    /// </returns>
+    public static async IAsyncEnumerable<LogEntry> ReadFromTimestampAsync(this Log log, long timestamp = -1, long count = -1, bool watchForChanges = false, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
+        ArgumentNullException.ThrowIfNull(log);
+        await foreach (var entry in log.ReadAllAsync(new LogReadOptions(Timestamp: timestamp, Limit: count, WatchForChanges: watchForChanges), cancellationToken).ConfigureAwait(false)) {
+            yield return entry;
+        }
+    }
+
+}

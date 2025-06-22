@@ -19,10 +19,12 @@ public sealed class FileCheckpointStore : ICheckpointStore, IAsyncDisposable {
     private readonly MemoryMappedFile _memoryMappedFile;
 
     private readonly MemoryMappedViewAccessor _memoryMappedViewAccessor;
-
-    private int _flushRequired;
     
     private readonly AsyncReaderWriterLock _lock = new AsyncReaderWriterLock();
+    
+    private readonly CancellationTokenSource _disposedTokenSource = new CancellationTokenSource();
+    
+    private readonly AsyncManualResetEvent _flushCompleted = new AsyncManualResetEvent(set: true);
 
 
     /// <summary>
@@ -48,7 +50,7 @@ public sealed class FileCheckpointStore : ICheckpointStore, IAsyncDisposable {
             file.Directory!.Create();
         }
         
-        var stream = file.Open(FileMode.OpenOrCreate, FileAccess.Write, FileShare.None);
+        var stream = file.Open(FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
         if (isNewFile || stream.Length != sizeof(ulong)) {
             stream.SetLength(sizeof(ulong));
         }
@@ -64,22 +66,33 @@ public sealed class FileCheckpointStore : ICheckpointStore, IAsyncDisposable {
         _memoryMappedViewAccessor = _memoryMappedFile.CreateViewAccessor(
             offset: 0,
             size: sizeof(ulong),
-            access: MemoryMappedFileAccess.ReadExecute);
+            access: MemoryMappedFileAccess.ReadWrite);
+        
+        if (options.FlushInterval > TimeSpan.Zero) {
+            // Start a background task to flush the checkpoint periodically
+            _ = RunBackgroundFlushAsync(options.FlushInterval, _disposedTokenSource.Token);
+        }
     }
 
 
     /// <inheritdoc />
     public async ValueTask SaveCheckpointAsync(ulong sequenceId, CancellationToken cancellationToken = default) {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        
         using var _ = await _lock.WriterLockAsync(cancellationToken).ConfigureAwait(false);
         ObjectDisposedException.ThrowIf(_disposed, this);
+        
         SaveCheckpoint(sequenceId);
     }
 
 
     /// <inheritdoc />
     public async ValueTask<ulong> LoadCheckpointAsync(CancellationToken cancellationToken = default) {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        
         using var _ = await _lock.ReaderLockAsync(cancellationToken).ConfigureAwait(true);
         ObjectDisposedException.ThrowIf(_disposed, this);
+        
         return LoadCheckpoint();
     }
 
@@ -91,9 +104,26 @@ public sealed class FileCheckpointStore : ICheckpointStore, IAsyncDisposable {
     ///   The cancellation token for the operation.
     /// </param>
     public async ValueTask FlushAsync(CancellationToken cancellationToken = default) {
-        using var _ = await _lock.WriterLockAsync().ConfigureAwait(false);
         ObjectDisposedException.ThrowIf(_disposed, this);
+        
+        using var _ = await _lock.WriterLockAsync(cancellationToken).ConfigureAwait(false);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        
         FlushCore();
+    }
+    
+    
+    /// <summary>
+    /// Waits until any pending changes have been flushed.
+    /// </summary>
+    /// <param name="cancellationToken">
+    ///   The cancellation token for the operation.
+    /// </param>
+    public async ValueTask WaitForFlushAsync(CancellationToken cancellationToken = default) {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        
+        // Wait for the flush to complete
+        await _flushCompleted.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
     
 
@@ -111,7 +141,7 @@ public sealed class FileCheckpointStore : ICheckpointStore, IAsyncDisposable {
             _memoryMappedViewAccessor.SafeMemoryMappedViewHandle.ReleasePointer();
         }
 
-        Interlocked.Exchange(ref _flushRequired, 1);
+        _flushCompleted.Reset();
     }
 
 
@@ -130,13 +160,26 @@ public sealed class FileCheckpointStore : ICheckpointStore, IAsyncDisposable {
         }
     }
 
+    
+    private async Task RunBackgroundFlushAsync(TimeSpan interval, CancellationToken cancellationToken) {
+        try {
+            while (!cancellationToken.IsCancellationRequested) {
+                await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
+                using var _ = await _lock.WriterLockAsync(cancellationToken).ConfigureAwait(false);
+                FlushCore();
+            }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+    }
+    
 
     private void FlushCore() {
-        if (Interlocked.CompareExchange(ref _flushRequired, 0, 1) == 0) {
+        if (_flushCompleted.IsSet) {
             return;
         }
 
         _memoryMappedViewAccessor.Flush();
+        _flushCompleted.Set();
     }
 
 
@@ -146,6 +189,7 @@ public sealed class FileCheckpointStore : ICheckpointStore, IAsyncDisposable {
             return;
         }
 
+        await _disposedTokenSource.CancelAsync().ConfigureAwait(false);
         using var _ = await _lock.WriterLockAsync().ConfigureAwait(false);
         FlushCore();
         

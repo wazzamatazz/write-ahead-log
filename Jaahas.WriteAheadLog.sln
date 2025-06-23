@@ -25,7 +25,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "test", "test", "{ADFADB4B-0
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{9EC81ADF-5CE2-4140-96BC-958CB9E0365C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jaahas.WriteAheadLog.Core", "src\Jaahas.WriteAheadLog.Core\Jaahas.WriteAheadLog.Core.csproj", "{D5F442BF-0969-4AF7-AD67-122D3F3C21A4}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jaahas.WriteAheadLog", "src\Jaahas.WriteAheadLog\Jaahas.WriteAheadLog.csproj", "{D5F442BF-0969-4AF7-AD67-122D3F3C21A4}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jaahas.WriteAheadLog.UnitTests", "test\Jaahas.WriteAheadLog.UnitTests\Jaahas.WriteAheadLog.UnitTests.csproj", "{B2D68393-F9AA-47F8-8265-7F77F5A16426}"
 EndProject

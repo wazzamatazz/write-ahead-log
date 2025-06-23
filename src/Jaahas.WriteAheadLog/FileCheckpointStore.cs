@@ -14,6 +14,8 @@ namespace Jaahas.WriteAheadLog;
 /// </remarks>
 public sealed class FileCheckpointStore : ICheckpointStore, IAsyncDisposable {
 
+    private const int SerializedPositionSize = 2 + 8; // 2 bytes for the position type, 8 bytes for the position value.
+    
     private bool _disposed;
     
     private readonly MemoryMappedFile _memoryMappedFile;
@@ -51,8 +53,8 @@ public sealed class FileCheckpointStore : ICheckpointStore, IAsyncDisposable {
         }
         
         var stream = file.Open(FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-        if (isNewFile || stream.Length != sizeof(ulong)) {
-            stream.SetLength(sizeof(ulong));
+        if (isNewFile || stream.Length != SerializedPositionSize) {
+            stream.SetLength(SerializedPositionSize);
         }
         
         _memoryMappedFile = MemoryMappedFile.CreateFromFile(
@@ -65,7 +67,7 @@ public sealed class FileCheckpointStore : ICheckpointStore, IAsyncDisposable {
 
         _memoryMappedViewAccessor = _memoryMappedFile.CreateViewAccessor(
             offset: 0,
-            size: sizeof(ulong),
+            size: SerializedPositionSize,
             access: MemoryMappedFileAccess.ReadWrite);
         
         if (options.FlushInterval > TimeSpan.Zero) {
@@ -76,18 +78,18 @@ public sealed class FileCheckpointStore : ICheckpointStore, IAsyncDisposable {
 
 
     /// <inheritdoc />
-    public async ValueTask SaveCheckpointAsync(ulong sequenceId, CancellationToken cancellationToken = default) {
+    public async ValueTask SaveCheckpointAsync(LogPosition position, CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
         
         using var _ = await _lock.WriterLockAsync(cancellationToken).ConfigureAwait(false);
         ObjectDisposedException.ThrowIf(_disposed, this);
         
-        SaveCheckpoint(sequenceId);
+        SaveCheckpoint(position);
     }
 
 
     /// <inheritdoc />
-    public async ValueTask<ulong> LoadCheckpointAsync(CancellationToken cancellationToken = default) {
+    public async ValueTask<LogPosition> LoadCheckpointAsync(CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
         
         using var _ = await _lock.ReaderLockAsync(cancellationToken).ConfigureAwait(true);
@@ -127,15 +129,28 @@ public sealed class FileCheckpointStore : ICheckpointStore, IAsyncDisposable {
     }
     
 
-    private unsafe void SaveCheckpoint(ulong sequenceId) {
+    private unsafe void SaveCheckpoint(LogPosition position) {
         // Get a pointer to the mapped memory
         byte* ptr = null; 
         _memoryMappedViewAccessor.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
 
         try {
             // Create a span over the mapped memory
-            var span = new Span<byte>(ptr, sizeof(ulong));
-            BinaryPrimitives.WriteUInt64LittleEndian(span, sequenceId);
+            var span = new Span<byte>(ptr, SerializedPositionSize);
+            
+            if (position.Timestamp.HasValue) {
+                // Timestamp-based position
+                span[0] = 0x54; // 'T'
+                span[1] = 0x53; // 'S'
+                BinaryPrimitives.WriteInt64LittleEndian(span[2..], position.Timestamp.Value);
+            }
+            else {
+                // Sequence ID-based position. This is also the fallback if neither timestamp nor
+                // sequence ID is provided.
+                span[0] = 0x49; // 'I'
+                span[1] = 0x44; // 'D'
+                BinaryPrimitives.WriteUInt64LittleEndian(span[2..], position.SequenceId ?? 0);
+            }
         }
         finally {
             _memoryMappedViewAccessor.SafeMemoryMappedViewHandle.ReleasePointer();
@@ -145,15 +160,32 @@ public sealed class FileCheckpointStore : ICheckpointStore, IAsyncDisposable {
     }
 
 
-    private unsafe ulong LoadCheckpoint() {
+    private unsafe LogPosition LoadCheckpoint() {
         // Get a pointer to the mapped memory
         byte* ptr = null; 
         _memoryMappedViewAccessor.SafeMemoryMappedViewHandle.AcquirePointer(ref ptr);
 
         try {
             // Create a span over the mapped memory
-            var span = new Span<byte>(ptr, sizeof(ulong));
-            return BinaryPrimitives.ReadUInt64LittleEndian(span);
+            var span = new Span<byte>(ptr, SerializedPositionSize);
+            switch (span[0]) {
+                // Timestamp-based position has prefix "TS"
+                case 0x54 when span[1] == 0x53: {
+                    // Timestamp-based position
+                    var timestamp = BinaryPrimitives.ReadInt64LittleEndian(span[2..]);
+                    return LogPosition.FromTimestamp(timestamp);
+                }
+                // Sequence ID-based position has prefix "ID"
+                case 0x49 when span[1] == 0x44: {
+                    // Sequence ID-based position
+                    var sequenceId = BinaryPrimitives.ReadUInt64LittleEndian(span[2..]);
+                    return LogPosition.FromSequenceId(sequenceId);
+                }
+                default: {
+                    // Invalid data, return a default position
+                    return default;
+                }
+            }
         }
         finally {
             _memoryMappedViewAccessor.SafeMemoryMappedViewHandle.ReleasePointer();

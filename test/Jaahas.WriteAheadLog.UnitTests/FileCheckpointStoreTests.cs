@@ -26,14 +26,27 @@ public class FileCheckpointStoreTests {
 
 
     [TestMethod]
-    public async Task CanWriteAndReadCheckpoint() {
+    public async Task CanWriteAndReadSequenceIdCheckpoint() {
         var options = new FileCheckpointStoreOptions { DataDirectory = s_tempPath, Name = TestContext.TestName! };
         await using var store = new FileCheckpointStore(options);
         
-        await store.SaveCheckpointAsync(12345, TestCancellationToken).ConfigureAwait(false);
+        await store.SaveCheckpointAsync(12345UL, TestCancellationToken).ConfigureAwait(false);
         var value = await store.LoadCheckpointAsync(TestCancellationToken).ConfigureAwait(false);
         
-        Assert.AreEqual(12345UL, value);
+        Assert.AreEqual(12345UL, value.SequenceId ?? 0);
+    }
+    
+    
+    [TestMethod]
+    public async Task CanWriteAndReadTimestampCheckpoint() {
+        var options = new FileCheckpointStoreOptions { DataDirectory = s_tempPath, Name = TestContext.TestName! };
+        await using var store = new FileCheckpointStore(options);
+        
+        var now = TimeProvider.System.GetTimestamp();
+        await store.SaveCheckpointAsync(now, TestCancellationToken).ConfigureAwait(false);
+        var value = await store.LoadCheckpointAsync(TestCancellationToken).ConfigureAwait(false);
+        
+        Assert.AreEqual(now, value.Timestamp ?? -1);
     }
 
 
@@ -44,22 +57,39 @@ public class FileCheckpointStoreTests {
         
         var value = await store.LoadCheckpointAsync(TestCancellationToken).ConfigureAwait(false);
         
-        Assert.AreEqual(0UL, value);
+        Assert.IsNull(value.SequenceId);
+        Assert.IsNull(value.Timestamp);
     }
     
     
     [TestMethod]
-    public async Task CheckpointIsPersistedAfterRestart() {
+    public async Task SequenceIdCheckpointIsPersistedAfterRestart() {
         var options = new FileCheckpointStoreOptions { DataDirectory = s_tempPath, Name = TestContext.TestName! };
         var store = new FileCheckpointStore(options);
 
-        await store.SaveCheckpointAsync(12345, TestCancellationToken);
+        await store.SaveCheckpointAsync(12345UL, TestCancellationToken);
         await store.DisposeAsync();
         
         store = new FileCheckpointStore(options);
         
         var value = await store.LoadCheckpointAsync(TestCancellationToken).ConfigureAwait(false);
-        Assert.AreEqual(12345UL, value);
+        Assert.AreEqual(12345UL, value.SequenceId ?? 0);
+    }
+    
+    
+    [TestMethod]
+    public async Task TimestampCheckpointIsPersistedAfterRestart() {
+        var options = new FileCheckpointStoreOptions { DataDirectory = s_tempPath, Name = TestContext.TestName! };
+        var store = new FileCheckpointStore(options);
+
+        var now = TimeProvider.System.GetTimestamp();
+        await store.SaveCheckpointAsync(now, TestCancellationToken);
+        await store.DisposeAsync();
+        
+        store = new FileCheckpointStore(options);
+        
+        var value = await store.LoadCheckpointAsync(TestCancellationToken).ConfigureAwait(false);
+        Assert.AreEqual(now, value.Timestamp ?? -1);
     }
     
     
@@ -76,7 +106,7 @@ public class FileCheckpointStoreTests {
         Assert.IsTrue(file.Exists);
         
         var lastModifiedTime = file.LastWriteTimeUtc;
-        await store.SaveCheckpointAsync(12345, TestCancellationToken);
+        await store.SaveCheckpointAsync(12345UL, TestCancellationToken);
         await store.FlushAsync(TestCancellationToken);
 
         file.Refresh();
@@ -98,7 +128,7 @@ public class FileCheckpointStoreTests {
         var file = new FileInfo(Path.Combine(s_tempPath, TestContext.TestName!));
         Assert.IsTrue(file.Exists);
         
-        await store.SaveCheckpointAsync(12345, TestCancellationToken);
+        await store.SaveCheckpointAsync(12345UL, TestCancellationToken);
 
         TestContext.CancellationTokenSource.CancelAfter(10_000);
         await store.WaitForFlushAsync(TestCancellationToken);
@@ -112,7 +142,7 @@ public class FileCheckpointStoreTests {
 
         await store.DisposeAsync();
         
-        await Assert.ThrowsAsync<ObjectDisposedException>(() => store.SaveCheckpointAsync(12345, TestCancellationToken).AsTask());
+        await Assert.ThrowsAsync<ObjectDisposedException>(() => store.SaveCheckpointAsync(12345UL, TestCancellationToken).AsTask());
     }
     
     

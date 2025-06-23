@@ -13,7 +13,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\Jaahas.WriteAheadLog.Core\Jaahas.WriteAheadLog.Core.csproj" />
+      <ProjectReference Include="..\Jaahas.WriteAheadLog\Jaahas.WriteAheadLog.csproj" />
     </ItemGroup>
 
 </Project>

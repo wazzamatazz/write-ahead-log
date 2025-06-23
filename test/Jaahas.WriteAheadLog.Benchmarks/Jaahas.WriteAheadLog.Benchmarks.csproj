@@ -8,7 +8,7 @@
     </PropertyGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.Core\Jaahas.WriteAheadLog.Core.csproj" />
+      <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog\Jaahas.WriteAheadLog.csproj" />
     </ItemGroup>
 
     <ItemGroup>

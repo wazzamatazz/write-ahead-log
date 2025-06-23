@@ -7,7 +7,7 @@ public class SparseIndexBenchmarks {
     
     private const int MessageCount = 1_000_000;
 
-    private const int SeekSequenceId = MessageCount / 2;
+    private const ulong SeekSequenceId = MessageCount / 2;
 
     private DirectoryInfo _dataDirectory = null!;
 
@@ -60,7 +60,7 @@ public class SparseIndexBenchmarks {
     
     [Benchmark]
     public async Task GetMessageUsingSparseIndex() {
-        await foreach (var item in _log.ReadFromPositionAsync(SeekSequenceId, count: 1)) {
+        await foreach (var item in _log.ReadAllAsync(position: SeekSequenceId, count: 1)) {
             item.Dispose();
             break;
         }

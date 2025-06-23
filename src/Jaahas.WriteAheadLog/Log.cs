@@ -373,17 +373,18 @@ public sealed partial class Log : IAsyncDisposable {
     /// <remarks>
     ///   Calling this method will initialize the log if it has not already been initialized.
     /// </remarks>
-    public async IAsyncEnumerable<LogEntry> ReadAllAsync(LogReadOptions? options = null, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
+    public async IAsyncEnumerable<LogEntry> ReadAllAsync(LogReadOptions options, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
-
-        options ??= new LogReadOptions();
         
-        if (options.Value.Timestamp > 0 && options.Value.Timestamp > _lastTimestamp) {
+        var startingTimestamp = options.Position.Timestamp ?? -1;
+        var startingSequenceId = options.Position.SequenceId ?? 0;
+        
+        if (startingTimestamp > 0 && startingTimestamp > _lastTimestamp && !options.WatchForChanges) {
             // After the last timestamp, there are no messages to read.
             yield break;
         }
         
-        if (options.Value.SequenceId > 0 && options.Value.SequenceId > _lastSequenceId) {
+        if (startingSequenceId > 0 && startingSequenceId > _lastSequenceId && !options.WatchForChanges) {
             // After the last sequence ID, there are no messages to read.
             yield break;
         }
@@ -397,14 +398,14 @@ public sealed partial class Log : IAsyncDisposable {
             var segmentsToRead = new ConcurrentQueue<SegmentIndexWrapper>();
             
             foreach (var item in _readOnlySegmentIndices) {
-                if (options.Value.Timestamp > 0) {
-                    if (item.Index.Header.LastTimestamp < options.Value.Timestamp) {
+                if (startingTimestamp > 0) {
+                    if (item.Index.Header.LastTimestamp < startingTimestamp) {
                         // Skip segments that are before the requested timestamp.
                         continue;
                     }
                 }
-                else if (options.Value.SequenceId > 0) {
-                    if (item.Index.Header.LastSequenceId < options.Value.SequenceId) {
+                else if (startingSequenceId > 0) {
+                    if (item.Index.Header.LastSequenceId < startingSequenceId) {
                         // Skip segments that are before the requested sequence ID.
                         continue;
                     }
@@ -414,29 +415,34 @@ public sealed partial class Log : IAsyncDisposable {
             }
 
             if (_writerSegmentIndex is not null) {
-                // Add the writable segment if we are not filtering based on timestamp or sequence
-                // ID, or if it matches the provided criteria.
-                if (options.Value is { Timestamp: < 1, SequenceId: < 1 } || (options.Value.Timestamp > 0 && _writerSegmentIndex.Header.LastTimestamp >= options.Value.Timestamp) || (options.Value.SequenceId > 0 && _writerSegmentIndex.Header.LastSequenceId >= options.Value.SequenceId)) {
+                // Add the writable segment if we are watching for changes, or if the starting
+                // timestamp or sequence ID fall before the end of the writable segment.
+
+                if (options.WatchForChanges ||
+                    startingTimestamp <= 0 ||
+                    startingSequenceId == 0 ||
+                    _writerSegmentIndex.Header.LastTimestamp >= startingTimestamp ||
+                    _writerSegmentIndex.Header.LastSequenceId >= startingSequenceId) {
                     segmentsToRead.Enqueue(new SegmentIndexWrapper(_writer!.FilePath, _writerSegmentIndex));
                 }
             }
             
-            if (segmentsToRead.IsEmpty && !options.Value.WatchForChanges) {
+            if (segmentsToRead.IsEmpty && !options.WatchForChanges) {
                 // No segments to read, so we can exit early.
                 yield break;
             }
             
-            status = new ReadOperationStatus(segmentsToRead, options.Value.WatchForChanges);
+            status = new ReadOperationStatus(segmentsToRead, options.WatchForChanges);
             _readOperations[status.Id] = status;
             
-            LogRead(status.Id, options.Value.SequenceId, options.Value.Timestamp, options.Value.Limit, options.Value.WatchForChanges);
+            LogRead(status.Id, startingSequenceId, startingTimestamp, options.Limit, options.WatchForChanges);
         }
 
         try {
             var isFirstSegment = true;
 
             while (!cts.IsCancellationRequested) {
-                if (!options.Value.WatchForChanges && status.Segments.IsEmpty) {
+                if (!options.WatchForChanges && status.Segments.IsEmpty) {
                     // If we are not watching for changes and there are no segments to read, we can exit early.
                     yield break;
                 }
@@ -453,15 +459,15 @@ public sealed partial class Log : IAsyncDisposable {
 
                         isFirstSegment = false;
 
-                        if (options.Value.Timestamp > 0) {
+                        if (startingTimestamp > 0) {
                             for (var i = 0; i < index.Index.Entries.Count; i++) {
                                 var entry = index.Index.Entries[i];
-                                if (entry.Timestamp < options.Value.Timestamp) {
+                                if (entry.Timestamp < startingTimestamp) {
                                     // Skip entries that are before the requested timestamp.
                                     continue; 
                                 }
 
-                                if (entry.Timestamp == options.Value.Timestamp) {
+                                if (entry.Timestamp == startingTimestamp) {
                                     // We found the first message we are interested in, so we can start reading from here.
                                     offset = entry.Offset;
                                     break;
@@ -475,14 +481,14 @@ public sealed partial class Log : IAsyncDisposable {
                                 break;
                             }
                         }
-                        else if (options.Value.SequenceId > 0) {
+                        else if (startingSequenceId > 0) {
                             for (var i = 0; i < index.Index.Entries.Count; i++) {
                                 var entry = index.Index.Entries[i];
-                                if (entry.SequenceId < options.Value.SequenceId) {
+                                if (entry.SequenceId < startingSequenceId) {
                                     continue; // Skip entries that are before the requested sequence ID.
                                 }
 
-                                if (entry.SequenceId == options.Value.SequenceId) {
+                                if (entry.SequenceId == startingSequenceId) {
                                     // We found the first message we are interested in, so we can start reading from here.
                                     offset = entry.Offset;
                                     break;
@@ -501,15 +507,15 @@ public sealed partial class Log : IAsyncDisposable {
                     var watch = status.WatchForChanges && index.Index is MutableSegmentIndex;
                     long count = 0;
                     await foreach (var item in new FileSegmentReader(_loggerFactory.CreateLogger<FileSegmentReader>()).ReadLogEntriesAsync(index.FilePath, offset, SeekOrigin.Begin, watch, _options.ReadPollingInterval, cts.Token).ConfigureAwait(false)) {
-                        if (options.Value.Timestamp > 0) {
-                            if (item.Timestamp < options.Value.Timestamp) {
+                        if (startingTimestamp > 0) {
+                            if (item.Timestamp < startingTimestamp) {
                                 // Skip entries that are before the requested timestamp.
                                 item.Dispose();
                                 continue;
                             }
                         }
-                        else if (options.Value.SequenceId > 0) {
-                            if (item.SequenceId < options.Value.SequenceId) {
+                        else if (startingSequenceId > 0) {
+                            if (item.SequenceId < startingSequenceId) {
                                 // Skip entries that are before the requested sequence ID.
                                 item.Dispose();
                                 continue;
@@ -518,7 +524,7 @@ public sealed partial class Log : IAsyncDisposable {
                         
                         yield return item;
                         
-                        if (options.Value.Limit > 0 && ++count >= options.Value.Limit) {
+                        if (options.Limit > 0 && ++count >= options.Limit) {
                             // If we have read enough messages, we can stop reading.
                             yield break;
                         }

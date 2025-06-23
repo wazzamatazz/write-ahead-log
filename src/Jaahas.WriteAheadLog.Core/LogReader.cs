@@ -147,13 +147,13 @@ public sealed partial class LogReader : IAsyncDisposable {
                 LogStartedProcessingEntries();
             }
 
-            var sequenceId = _checkpointStore is not null
+            var position = _checkpointStore is not null
                 ? await _checkpointStore.LoadCheckpointAsync(cancellationToken).ConfigureAwait(false)
-                : 0;
+                : default;
             
-            var initialSequenceId = sequenceId;
+            var initialSequenceId = position;
             
-            await foreach (var item in _log.ReadFromPositionAsync(sequenceId: sequenceId, watchForChanges: true, cancellationToken: cancellationToken)) {
+            await foreach (var item in _log.ReadAllAsync(position: position, watchForChanges: true, cancellationToken: cancellationToken)) {
                 try {
                     if (item.SequenceId == initialSequenceId) {
                         // Skip the item if it matches the initial checkpoint - we don't want to
@@ -193,10 +193,10 @@ public sealed partial class LogReader : IAsyncDisposable {
                     }
                 }
                 finally {
-                    sequenceId = item.SequenceId;
+                    position = item.SequenceId;
                     item.Dispose();
                     if (_checkpointStore is not null) {
-                        await _checkpointStore.SaveCheckpointAsync(sequenceId, cancellationToken).ConfigureAwait(false);
+                        await _checkpointStore.SaveCheckpointAsync(position, cancellationToken).ConfigureAwait(false);
                     }
                 }
 

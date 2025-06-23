@@ -79,16 +79,16 @@ public class LogReaderTests {
 
     private class InMemoryCheckpointStore : ICheckpointStore {
 
-        internal ulong Checkpoint { get; private set; }
+        internal LogPosition Checkpoint { get; private set; }
 
 
-        public ValueTask<ulong> LoadCheckpointAsync(CancellationToken cancellationToken = default) {
+        public ValueTask<LogPosition> LoadCheckpointAsync(CancellationToken cancellationToken = default) {
             return ValueTask.FromResult(Checkpoint);
         }
 
 
-        public ValueTask SaveCheckpointAsync(ulong sequenceId, CancellationToken cancellationToken = default) {
-            Checkpoint = sequenceId;
+        public ValueTask SaveCheckpointAsync(LogPosition position, CancellationToken cancellationToken = default) {
+            Checkpoint = position;
             return ValueTask.CompletedTask;
         }
 

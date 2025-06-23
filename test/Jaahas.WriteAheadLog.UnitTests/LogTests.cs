@@ -73,7 +73,7 @@ public class LogTests {
         
         TestContext.CancellationTokenSource.CancelAfter(10_000);
 
-        await foreach (var msg in log.ReadFromPositionAsync(cancellationToken: TestContext.CancellationTokenSource.Token)) {
+        await foreach (var msg in log.ReadAllAsync(cancellationToken: TestContext.CancellationTokenSource.Token)) {
             if (writeResults.Count == 0) {
                 Assert.Fail("No write results available to compare with.");
             }
@@ -111,7 +111,7 @@ public class LogTests {
         
         TestContext.CancellationTokenSource.CancelAfter(10_000);
         
-        await foreach (var item in log.ReadFromPositionAsync(startSequenceId, cancellationToken: TestContext.CancellationTokenSource.Token)) {
+        await foreach (var item in log.ReadAllAsync(startSequenceId, cancellationToken: TestContext.CancellationTokenSource.Token)) {
             if (expectedResults.Count == 0) {
                 Assert.Fail("No expected results available to compare with.");
             }
@@ -150,7 +150,7 @@ public class LogTests {
         
         TestContext.CancellationTokenSource.CancelAfter(10_000);
         
-        await foreach (var item in log.ReadFromTimestampAsync(startTimestamp, cancellationToken: TestContext.CancellationTokenSource.Token)) {
+        await foreach (var item in log.ReadAllAsync(startTimestamp, cancellationToken: TestContext.CancellationTokenSource.Token)) {
             if (expectedResults.Count == 0) {
                 Assert.Fail("No expected results available to compare with.");
             }
@@ -188,7 +188,7 @@ public class LogTests {
         TestContext.CancellationTokenSource.CancelAfter(10_000);
         
         var count = 0;
-        await foreach (var item in log.ReadFromPositionAsync(count: 5, cancellationToken: TestContext.CancellationTokenSource.Token)) {
+        await foreach (var item in log.ReadAllAsync(count: 5, cancellationToken: TestContext.CancellationTokenSource.Token)) {
             if (writeResults.Count == 0) {
                 Assert.Fail("No write results available to compare with.");
             }
@@ -237,7 +237,7 @@ public class LogTests {
         TestContext.CancellationTokenSource.CancelAfter(10_000);
         
         var count = 0;
-        await foreach (var item in log.ReadFromPositionAsync(watchForChanges: true, cancellationToken: TestContext.CancellationTokenSource.Token)) {
+        await foreach (var item in log.ReadAllAsync(watchForChanges: true, cancellationToken: TestContext.CancellationTokenSource.Token)) {
             item.Dispose();
             ++count;
             

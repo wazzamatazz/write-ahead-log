@@ -39,7 +39,8 @@ public class LogReaderTests {
     [TestMethod]
     public async Task ShouldReadLogEntries() {
         await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
-            DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!)
+            DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
+            ReadPollingInterval = TimeSpan.FromMilliseconds(10)
         });
 
         var checkpointStore = new InMemoryCheckpointStore();
@@ -72,21 +73,22 @@ public class LogReaderTests {
         await tcs.Task;
 
         Assert.AreEqual(5, entryCount);
+        Assert.AreEqual(5UL, checkpointStore.Checkpoint);
     }
 
 
     private class InMemoryCheckpointStore : ICheckpointStore {
 
-        private ulong _checkpoint = 0;
+        internal ulong Checkpoint { get; private set; }
 
 
         public ValueTask<ulong> LoadCheckpointAsync(CancellationToken cancellationToken = default) {
-            return ValueTask.FromResult(_checkpoint);
+            return ValueTask.FromResult(Checkpoint);
         }
 
 
         public ValueTask SaveCheckpointAsync(ulong sequenceId, CancellationToken cancellationToken = default) {
-            _checkpoint = sequenceId;
+            Checkpoint = sequenceId;
             return ValueTask.CompletedTask;
         }
 

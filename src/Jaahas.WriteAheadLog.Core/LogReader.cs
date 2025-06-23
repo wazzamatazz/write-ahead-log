@@ -40,8 +40,16 @@ public sealed partial class LogReader : IAsyncDisposable {
     private readonly Log _log;
 
     private readonly ICheckpointStore? _checkpointStore;
+    
+    private LogPosition _currentPosition;
+    
+    private readonly AsyncLock _startLock = new AsyncLock();
 
     private readonly AsyncManualResetEvent _running = new AsyncManualResetEvent(false);
+    
+    private bool _skipInitialPositionCheck;
+    
+    private readonly AsyncAutoResetEvent _stopped = new AsyncAutoResetEvent(false);
 
     private readonly CancellationTokenSource _disposedTokenSource = new CancellationTokenSource();
     
@@ -94,8 +102,11 @@ public sealed partial class LogReader : IAsyncDisposable {
 
 
     /// <summary>
-    /// Starts the log reader, allowing it to process log entries.
+    /// Starts the log reader and overwrites the existing log position checkpoint.
     /// </summary>
+    /// <param name="options">
+    ///   The log reader start options to use.
+    /// </param>
     /// <param name="cancellationToken">
     ///   The cancellation token for the operation.
     /// </param>
@@ -105,10 +116,48 @@ public sealed partial class LogReader : IAsyncDisposable {
     /// <exception cref="ObjectDisposedException">
     ///   The <see cref="LogReader"/> has already been disposed.
     /// </exception>
-    public ValueTask StartAsync(CancellationToken cancellationToken = default) {
+    /// <exception cref="InvalidOperationException">
+    ///   The <see cref="LogReader"/> is already running.
+    /// </exception>
+    public async ValueTask StartAsync(LogReaderStartOptions options = default, CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        
+        using var _ = await _startLock.LockAsync(cancellationToken).ConfigureAwait(false);
+        
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_running.IsSet) {
+            throw new InvalidOperationException("Log reader is already running.");
+        }
+
+        switch (options.StartBehaviour) {
+            case LogReaderStartBehaviour.OverrideCheckpoint:
+                _currentPosition = options.Position;
+                if (_checkpointStore is not null) {
+                    await _checkpointStore.SaveCheckpointAsync(_currentPosition, cancellationToken).ConfigureAwait(false);
+                }
+
+                _skipInitialPositionCheck = true;
+                break;
+            case LogReaderStartBehaviour.UseCheckpointIfAvailable:
+            default:
+                _currentPosition = _checkpointStore is not null
+                    ? await _checkpointStore.LoadCheckpointAsync(cancellationToken).ConfigureAwait(false)
+                    : default;
+                
+                if (_currentPosition == default && options.Position != default) {
+                    // If no checkpoint is available, use the provided position
+                    _currentPosition = options.Position;
+                    _skipInitialPositionCheck = true;
+                }
+                else {
+                    // If a checkpoint is available, we will skip the initial position check
+                    // to avoid reprocessing the entry at the checkpoint
+                    _skipInitialPositionCheck = false;
+                }
+                break;
+        }
+        
         _running.Set();
-        return ValueTask.CompletedTask;
     }
     
 
@@ -124,10 +173,14 @@ public sealed partial class LogReader : IAsyncDisposable {
     /// <exception cref="ObjectDisposedException">
     ///   The <see cref="LogReader"/> has already been disposed.
     /// </exception>
-    public ValueTask StopAsync(CancellationToken cancellationToken = default) {
+    public async ValueTask StopAsync(CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        
+        using var _ = await _startLock.LockAsync(cancellationToken).ConfigureAwait(false);
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        
         _running.Reset();
-        return ValueTask.CompletedTask;
+        await _stopped.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
 
@@ -147,20 +200,21 @@ public sealed partial class LogReader : IAsyncDisposable {
                 LogStartedProcessingEntries();
             }
 
-            var position = _checkpointStore is not null
-                ? await _checkpointStore.LoadCheckpointAsync(cancellationToken).ConfigureAwait(false)
-                : default;
+            var initialPosition = _currentPosition;
+            var skipEntryAtInitialPosition = !_skipInitialPositionCheck && (initialPosition.SequenceId.HasValue || initialPosition.Timestamp.HasValue);
             
-            var initialSequenceId = position;
-            
-            await foreach (var item in _log.ReadAllAsync(position: position, watchForChanges: true, cancellationToken: cancellationToken)) {
+            await foreach (var item in _log.ReadAllAsync(position: initialPosition, watchForChanges: true, cancellationToken: cancellationToken)) {
                 try {
-                    if (item.SequenceId == initialSequenceId) {
-                        // Skip the item if it matches the initial checkpoint - we don't want to
-                        // reprocess it
-                        continue;
+                    if (skipEntryAtInitialPosition) {
+                        skipEntryAtInitialPosition = false;
+                        if ((initialPosition.SequenceId.HasValue && initialPosition.SequenceId.Value == item.SequenceId) ||
+                            (initialPosition.Timestamp.HasValue && initialPosition.Timestamp.Value == item.Timestamp)) {
+                            // Skip the item if it matches the initial checkpoint - we don't want to
+                            // reprocess it
+                            continue;
+                        }
                     }
-                    
+
                     if (_logger.IsEnabled(LogLevel.Trace)) {
                         LogProcessingEntry(item.SequenceId, item.Timestamp);
                     }
@@ -193,10 +247,15 @@ public sealed partial class LogReader : IAsyncDisposable {
                     }
                 }
                 finally {
-                    position = item.SequenceId;
+                    LogPosition newPosition = _currentPosition.Timestamp.HasValue
+                        ? item.Timestamp
+                        : item.SequenceId;
+                    
                     item.Dispose();
+                    
+                    _currentPosition = newPosition;
                     if (_checkpointStore is not null) {
-                        await _checkpointStore.SaveCheckpointAsync(position, cancellationToken).ConfigureAwait(false);
+                        await _checkpointStore.SaveCheckpointAsync(_currentPosition, cancellationToken).ConfigureAwait(false);
                     }
                 }
 
@@ -205,6 +264,7 @@ public sealed partial class LogReader : IAsyncDisposable {
                 }
 
                 LogStoppedProcessingEntries();
+                _stopped.Set();
                 break;
             }
         }

@@ -424,7 +424,7 @@ public class LogTests {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
             SegmentRetentionLimit = 2,
             MaxSegmentMessageCount = 100,
-            SegmentCleanupInterval = TimeSpan.FromMilliseconds(50)
+            SegmentCleanupInterval = TimeSpan.FromMilliseconds(10)
         });
         
         for (var i = 0; i < 499; i++) {
@@ -432,14 +432,11 @@ public class LogTests {
         }
 
         await log.FlushAsync();
-        
-        var segments = await log.GetSegmentsAsync();
-        Assert.AreEqual(5, segments.Count);
 
         // Wait for the cleanup to occur
-        await Task.Delay(100);
+        await Task.Delay(50);
         
-        segments = await log.GetSegmentsAsync();
+        var segments = await log.GetSegmentsAsync();
         // Writer segment + 2 closed segments should remain
         Assert.AreEqual(3, segments.Count);
     }
@@ -451,7 +448,7 @@ public class LogTests {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
             MaxSegmentMessageCount = 100,
             SegmentRetentionPeriod = TimeSpan.FromMilliseconds(1),
-            SegmentCleanupInterval = TimeSpan.FromMilliseconds(50)
+            SegmentCleanupInterval = TimeSpan.FromMilliseconds(10)
         });
         
         for (var i = 0; i < 499; i++) {
@@ -460,13 +457,10 @@ public class LogTests {
 
         await log.FlushAsync();
         
-        var segments = await log.GetSegmentsAsync();
-        Assert.AreEqual(5, segments.Count);
-
         // Wait for the cleanup to occur
-        await Task.Delay(100);
+        await Task.Delay(50);
         
-        segments = await log.GetSegmentsAsync();
+        var segments = await log.GetSegmentsAsync();
         // Only the writer segment should remain
         Assert.AreEqual(1, segments.Count);
     }

@@ -69,17 +69,104 @@ public class LogReaderTests {
         }
 
         // Wait for the reader to process the entries
+        await using var _ = TestContext.CancellationTokenSource.Token.Register(() => tcs.TrySetCanceled());
         TestContext.CancellationTokenSource.CancelAfter(10_000);
         await tcs.Task;
 
         Assert.AreEqual(5, entryCount);
         Assert.AreEqual(5UL, checkpointStore.Checkpoint);
     }
+    
+    
+    [TestMethod]
+    public async Task ShouldReadLogEntriesFromStartPosition() {
+        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+            DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
+            ReadPollingInterval = TimeSpan.FromMilliseconds(10)
+        });
+
+        var checkpointStore = new InMemoryCheckpointStore();
+        
+        await using var reader = ActivatorUtilities.CreateInstance<LogReader>(s_serviceProvider, log, checkpointStore);
+
+        var entryCount = 0;
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        
+        reader.ProcessEntry += _ => {
+            entryCount++;
+            if (entryCount == 4) {
+                tcs.SetResult();
+            }
+            return Task.CompletedTask;
+        };
+
+        await reader.StartAsync(new LogReaderStartOptions(2UL, LogReaderStartBehaviour.UseCheckpointIfAvailable));
+
+        await using var writer = new JsonLogWriter();
+        var rnd = new Random();
+        
+        // Simulate writing entries to the log
+        for (var i = 0; i < 5; i++) {
+            await writer.WriteToLogAsync(log, rnd.NextDouble());
+        }
+
+        // Wait for the reader to process the entries
+        await using var _ = TestContext.CancellationTokenSource.Token.Register(() => tcs.TrySetCanceled());
+        TestContext.CancellationTokenSource.CancelAfter(10_000);
+        await tcs.Task;
+
+        Assert.AreEqual(4, entryCount);
+        Assert.AreEqual(5UL, checkpointStore.Checkpoint);
+    }
+    
+    
+    [TestMethod]
+    public async Task ShouldOverrideExistingCheckpoint() {
+        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+            DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
+            ReadPollingInterval = TimeSpan.FromMilliseconds(10)
+        });
+
+        var checkpointStore = new InMemoryCheckpointStore() {
+            Checkpoint = 5UL // Simulate an existing checkpoint
+        };
+        
+        await using var reader = ActivatorUtilities.CreateInstance<LogReader>(s_serviceProvider, log, checkpointStore);
+
+        var entryCount = 0;
+        var tcs = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        
+        reader.ProcessEntry += _ => {
+            entryCount++;
+            if (entryCount == 3) {
+                tcs.SetResult();
+            }
+            return Task.CompletedTask;
+        };
+
+        await reader.StartAsync(new LogReaderStartOptions(3UL, LogReaderStartBehaviour.OverrideCheckpoint));
+
+        await using var writer = new JsonLogWriter();
+        var rnd = new Random();
+        
+        // Simulate writing entries to the log
+        for (var i = 0; i < 5; i++) {
+            await writer.WriteToLogAsync(log, rnd.NextDouble());
+        }
+
+        // Wait for the reader to process the entries
+        await using var _ = TestContext.CancellationTokenSource.Token.Register(() => tcs.TrySetCanceled());
+        TestContext.CancellationTokenSource.CancelAfter(10_000);
+        await tcs.Task;
+
+        Assert.AreEqual(3, entryCount);
+        Assert.AreEqual(5UL, checkpointStore.Checkpoint);
+    }
 
 
     private class InMemoryCheckpointStore : ICheckpointStore {
 
-        internal LogPosition Checkpoint { get; private set; }
+        internal LogPosition Checkpoint { get; set; }
 
 
         public ValueTask<LogPosition> LoadCheckpointAsync(CancellationToken cancellationToken = default) {

@@ -6,10 +6,10 @@ namespace Jaahas.WriteAheadLog;
 public interface ICheckpointStore {
 
     /// <summary>
-    /// Persists the checkpoint sequence ID for the log reader.
+    /// Persists the checkpoint position for the log reader.
     /// </summary>
-    /// <param name="sequenceId">
-    ///   The sequence ID to persist as the checkpoint.
+    /// <param name="position">
+    ///   The log position to persist as the checkpoint.
     /// </param>
     /// <param name="cancellationToken">
     ///   The cancellation token for the operation.
@@ -17,18 +17,18 @@ public interface ICheckpointStore {
     /// <returns>
     ///   A <see cref="ValueTask"/> representing the asynchronous operation.
     /// </returns>
-    ValueTask SaveCheckpointAsync(ulong sequenceId, CancellationToken cancellationToken = default);
+    ValueTask SaveCheckpointAsync(LogPosition position, CancellationToken cancellationToken = default);
 
 
     /// <summary>
-    /// Retrieves the last persisted checkpoint (sequence ID) for the log reader.
+    /// Retrieves the last persisted checkpoint position for the log reader.
     /// </summary>
     /// <param name="cancellationToken">
     ///   The cancellation token for the operation.
     /// </param>
     /// <returns>
-    ///   The last persisted sequence ID, or zero if no checkpoint exists.
+    ///   The last persisted log position.
     /// </returns>
-    ValueTask<ulong> LoadCheckpointAsync(CancellationToken cancellationToken = default);
+    ValueTask<LogPosition> LoadCheckpointAsync(CancellationToken cancellationToken = default);
 
 }

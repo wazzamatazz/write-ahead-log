@@ -6,9 +6,9 @@ using Jaahas.WriteAheadLog.Internal;
 namespace Jaahas.WriteAheadLog;
 
 /// <summary>
-/// Extensions for <see cref="Log"/>.
+/// Extensions for <see cref="IWriteAheadLog"/>.
 /// </summary>
-public static class LogExtensions {
+public static class WriteAheadLogExtensions {
     
     /// <summary>
     /// Writes a log message to the segment with the specified sequence ID.
@@ -38,7 +38,7 @@ public static class LogExtensions {
     /// Writes a log message to the current segment.
     /// </summary>
     /// <param name="log">
-    ///   The <see cref="Log"/> to write the log message to.
+    ///   The <see cref="IWriteAheadLog"/> to write the log message to.
     /// </param>
     /// <param name="data">
     ///   The log message to write.
@@ -50,7 +50,7 @@ public static class LogExtensions {
     ///   A <see cref="WriteResult"/> containing the sequence ID and timestamp of the written
     ///   message.
     /// </returns>
-    public static ValueTask<WriteResult> WriteAsync(this Log log, ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default) {
+    public static ValueTask<WriteResult> WriteAsync(this IWriteAheadLog log, ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default) {
         ArgumentNullException.ThrowIfNull(log);
         return log.WriteAsync(new ReadOnlySequence<byte>(data), cancellationToken);
     }
@@ -60,7 +60,7 @@ public static class LogExtensions {
     /// Reads log entries starting from a specific sequence ID.
     /// </summary>
     /// <param name="log">
-    ///   The <see cref="Log"/> to read from.
+    ///   The <see cref="IWriteAheadLog"/> to read from.
     /// </param>
     /// <param name="position">
     ///   The position to start reading from.
@@ -79,7 +79,7 @@ public static class LogExtensions {
     /// <returns>
     ///   An asynchronous sequence of <see cref="LogEntry"/> instances read from the log.
     /// </returns>
-    public static async IAsyncEnumerable<LogEntry> ReadAllAsync(this Log log, LogPosition position = default, long count = -1, bool watchForChanges = false, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
+    public static async IAsyncEnumerable<LogEntry> ReadAllAsync(this IWriteAheadLog log, LogPosition position = default, long count = -1, bool watchForChanges = false, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
         ArgumentNullException.ThrowIfNull(log);
         await foreach (var entry in log.ReadAllAsync(new LogReadOptions(Position: position, Limit: count, WatchForChanges: watchForChanges), cancellationToken).ConfigureAwait(false)) {
             yield return entry;

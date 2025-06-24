@@ -39,7 +39,7 @@ public sealed class LogWriter : IBufferWriter<byte>, IDisposable, IAsyncDisposab
     private RecyclableMemoryStream GetStream(int sizeHint) {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        return _stream ??= Log.RecyclableMemoryStreamManager.GetStream(
+        return _stream ??= FileWriteAheadLog.RecyclableMemoryStreamManager.GetStream(
             id: Guid.NewGuid(),
             tag: null,
             requiredSize: sizeHint);
@@ -47,11 +47,11 @@ public sealed class LogWriter : IBufferWriter<byte>, IDisposable, IAsyncDisposab
 
 
     /// <summary>
-    /// Writes the buffered log message to the specified <see cref="Log"/> and resets the
-    /// buffer.
+    /// Writes the buffered log message to the specified <see cref="IWriteAheadLog"/> and resets
+    /// the buffer.
     /// </summary>
     /// <param name="log">
-    ///   The <see cref="Log"/> to write the buffered log message to.
+    ///   The <see cref="IWriteAheadLog"/> to write the buffered log message to.
     /// </param>
     /// <param name="cancellationToken">
     ///   The cancellation token for the operation.
@@ -69,7 +69,7 @@ public sealed class LogWriter : IBufferWriter<byte>, IDisposable, IAsyncDisposab
     /// <exception cref="InvalidOperationException">
     ///   The <see cref="LogWriter"/> does not have any pending message data to publish.
     /// </exception>
-    public async ValueTask<WriteResult> WriteToLogAsync(Log log, CancellationToken cancellationToken = default) {
+    public async ValueTask<WriteResult> WriteToLogAsync(IWriteAheadLog log, CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(log);
         if (_stream == null) {

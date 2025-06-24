@@ -4,7 +4,7 @@ using System.Text.Json.Serialization.Metadata;
 namespace Jaahas.WriteAheadLog;
 
 /// <summary>
-/// <see cref="JsonLogWriter"/> simplifies writing JSON-serialized messages to a <see cref="Log"/>.
+/// <see cref="JsonLogWriter"/> simplifies writing JSON-serialized messages to an <see cref="IWriteAheadLog"/>.
 /// </summary>
 public sealed class JsonLogWriter : IDisposable, IAsyncDisposable {
 
@@ -28,7 +28,7 @@ public sealed class JsonLogWriter : IDisposable, IAsyncDisposable {
     /// Writes the specified data to the log as a JSON-serialized message.
     /// </summary>
     /// <param name="log">
-    ///   The <see cref="Log"/> to write the JSON message to.
+    ///   The <see cref="IWriteAheadLog"/> to write the JSON message to.
     /// </param>
     /// <param name="data">
     ///   The data to serialize to JSON and write to the log.
@@ -49,7 +49,7 @@ public sealed class JsonLogWriter : IDisposable, IAsyncDisposable {
     /// <exception cref="ArgumentNullException">
     ///   <paramref name="log"/> is <see langword="null"/>.
     /// </exception>
-    public async ValueTask<WriteResult> WriteToLogAsync<T>(Log log, T data, JsonSerializerOptions? options = null) {
+    public async ValueTask<WriteResult> WriteToLogAsync<T>(IWriteAheadLog log, T data, JsonSerializerOptions? options = null) {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(log);
 
@@ -67,7 +67,7 @@ public sealed class JsonLogWriter : IDisposable, IAsyncDisposable {
     /// Writes the specified data to the log as a JSON-serialized message.
     /// </summary>
     /// <param name="log">
-    ///   The <see cref="Log"/> to write the JSON message to.
+    ///   The <see cref="IWriteAheadLog"/> to write the JSON message to.
     /// </param>
     /// <param name="data">
     ///   The data to serialize to JSON and write to the log.
@@ -91,7 +91,7 @@ public sealed class JsonLogWriter : IDisposable, IAsyncDisposable {
     /// <exception cref="ArgumentNullException">
     ///   <paramref name="jsonTypeInfo"/> is <see langword="null"/>.
     /// </exception>
-    public async ValueTask<WriteResult> WriteToLogAsync<T>(Log log, T data, JsonTypeInfo<T> jsonTypeInfo) {
+    public async ValueTask<WriteResult> WriteToLogAsync<T>(IWriteAheadLog log, T data, JsonTypeInfo<T> jsonTypeInfo) {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(log);
         ArgumentNullException.ThrowIfNull(jsonTypeInfo);

@@ -6,7 +6,7 @@ using Microsoft.Extensions.Logging;
 namespace Jaahas.WriteAheadLog.UnitTests;
 
 [TestClass]
-public class LogTests {
+public class FileWriteAheadLogTests {
 
     private static string s_tempPath = null!;
     
@@ -40,7 +40,7 @@ public class LogTests {
 
     [TestMethod]
     public async Task ShouldWriteMessages() {
-        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+        await using var log = ActivatorUtilities.CreateInstance<FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!)
         });
         
@@ -55,7 +55,7 @@ public class LogTests {
     
     [TestMethod]
     public async Task ShouldReadMessagesFromActiveSegment() {
-        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+        await using var log = ActivatorUtilities.CreateInstance<FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!)
         });
         
@@ -94,7 +94,7 @@ public class LogTests {
 
     [TestMethod]
     public async Task ShouldReadMessagesFromSegmentId() {
-        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+        await using var log = ActivatorUtilities.CreateInstance<FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!)
         });
         
@@ -132,7 +132,7 @@ public class LogTests {
     
     [TestMethod]
     public async Task ShouldReadMessagesFromTimestamp() {
-        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+        await using var log = ActivatorUtilities.CreateInstance<FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!)
         });
         
@@ -173,7 +173,7 @@ public class LogTests {
     
     [TestMethod]
     public async Task ShouldReadRequestedNumberOfMessages() {
-        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+        await using var log = ActivatorUtilities.CreateInstance<FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!)
         });
         
@@ -214,7 +214,7 @@ public class LogTests {
 
     [TestMethod]
     public async Task ShouldWatchForChangesWhileReading() {
-        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+        await using var log = ActivatorUtilities.CreateInstance<FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
             ReadPollingInterval = TimeSpan.FromMilliseconds(10)
         });
@@ -257,7 +257,7 @@ public class LogTests {
 
     [TestMethod]
     public async Task ManualRolloverShouldCreateNewSegment() {
-        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+        await using var log = ActivatorUtilities.CreateInstance<FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!)
         });
         
@@ -277,7 +277,7 @@ public class LogTests {
     
     [TestMethod]
     public async Task CountBasedRolloverShouldCreateNewSegment() {
-        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+        await using var log = ActivatorUtilities.CreateInstance<FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
             MaxSegmentMessageCount = 5
         });
@@ -304,7 +304,7 @@ public class LogTests {
     
     [TestMethod]
     public async Task SizeBasedRolloverShouldCreateNewSegment() {
-        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+        await using var log = ActivatorUtilities.CreateInstance<FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
             MaxSegmentSizeBytes = 64 + 5 * (24 + 64 + 4) // 64 bytes for segment header, 5 messages with: 24 bytes header, 64 bytes body, and 4 bytes checksum
         });
@@ -331,7 +331,7 @@ public class LogTests {
     
     [TestMethod]
     public async Task TimeBasedRolloverShouldCreateNewSegment() {
-        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+        await using var log = ActivatorUtilities.CreateInstance<FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
             MaxSegmentTimeSpan = TimeSpan.FromSeconds(1)
         });
@@ -367,7 +367,7 @@ public class LogTests {
 
     [TestMethod]
     public async Task ShouldManuallyCleanUpExpiredSegmentsWhenCountIsExceeded() {
-        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+        await using var log = ActivatorUtilities.CreateInstance<FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
             SegmentRetentionLimit = 2,
             MaxSegmentMessageCount = 100,
@@ -392,7 +392,7 @@ public class LogTests {
     
     [TestMethod]
     public async Task ShouldManuallyCleanUpExpiredSegmentsWhenRetentionPeriodIsExceeded() {
-        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+        await using var log = ActivatorUtilities.CreateInstance<FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
             MaxSegmentMessageCount = 100,
             SegmentRetentionPeriod = TimeSpan.FromMilliseconds(1),
@@ -420,7 +420,7 @@ public class LogTests {
     
     [TestMethod]
     public async Task ShouldAutomaticallyCleanUpExpiredSegmentsWhenCountIsExceeded() {
-        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+        await using var log = ActivatorUtilities.CreateInstance<FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
             SegmentRetentionLimit = 2,
             MaxSegmentMessageCount = 100,
@@ -444,7 +444,7 @@ public class LogTests {
     
     [TestMethod]
     public async Task ShouldAutomaticallyCleanUpExpiredSegmentsWhenRetentionPeriodIsExceeded() {
-        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+        await using var log = ActivatorUtilities.CreateInstance<FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
             MaxSegmentMessageCount = 100,
             SegmentRetentionPeriod = TimeSpan.FromMilliseconds(1),

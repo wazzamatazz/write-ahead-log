@@ -36,7 +36,7 @@ public class LogWriteBenchmarks {
 
     [Benchmark]
     public async Task WriteToLog() {
-        await using var log = new Log(new LogOptions() {
+        await using var log = new FileWriteAheadLog(new FileWriteAheadLogOptions() {
             DataDirectory = _iterationDirectory.FullName,
             FlushInterval = TimeSpan.Zero,
             FlushBatchSize = 1_000,

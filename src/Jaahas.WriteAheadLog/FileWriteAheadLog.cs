@@ -143,7 +143,7 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
     
 
     /// <summary>
-    /// Creates a new <see cref="FileWriteAheadLog"/> insance.
+    /// Creates a new <see cref="FileWriteAheadLog"/> instance.
     /// </summary>
     /// <param name="options">
     ///   The log options.

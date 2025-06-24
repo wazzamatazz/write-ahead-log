@@ -17,7 +17,7 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog\Jaahas.WriteAheadLog.csproj" />
+      <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.FileSystem\Jaahas.WriteAheadLog.FileSystem.csproj" />
       <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.DependencyInjection\Jaahas.WriteAheadLog.DependencyInjection.csproj" />
     </ItemGroup>
 

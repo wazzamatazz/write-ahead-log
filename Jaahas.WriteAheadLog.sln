@@ -25,13 +25,25 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "test", "test", "{ADFADB4B-0
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{9EC81ADF-5CE2-4140-96BC-958CB9E0365C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jaahas.WriteAheadLog", "src\Jaahas.WriteAheadLog\Jaahas.WriteAheadLog.csproj", "{D5F442BF-0969-4AF7-AD67-122D3F3C21A4}"
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jaahas.WriteAheadLog.FileSystem", "src\Jaahas.WriteAheadLog.FileSystem\Jaahas.WriteAheadLog.FileSystem.csproj", "{D5F442BF-0969-4AF7-AD67-122D3F3C21A4}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jaahas.WriteAheadLog.UnitTests", "test\Jaahas.WriteAheadLog.UnitTests\Jaahas.WriteAheadLog.UnitTests.csproj", "{B2D68393-F9AA-47F8-8265-7F77F5A16426}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jaahas.WriteAheadLog.Benchmarks", "test\Jaahas.WriteAheadLog.Benchmarks\Jaahas.WriteAheadLog.Benchmarks.csproj", "{7BB514E7-3F7E-4467-8BF9-5E9BB95F3532}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jaahas.WriteAheadLog.DependencyInjection", "src\Jaahas.WriteAheadLog.DependencyInjection\Jaahas.WriteAheadLog.DependencyInjection.csproj", "{728068F5-D53C-48D5-9157-D0AFF3B74D53}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jaahas.WriteAheadLog.Grpc.Server", "src\Jaahas.WriteAheadLog.Grpc.Server\Jaahas.WriteAheadLog.Grpc.Server.csproj", "{954D2C3E-0BE6-41E1-8195-1324ED6E0D43}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jaahas.WriteAheadLog.Grpc.Client", "src\Jaahas.WriteAheadLog.Grpc.Client\Jaahas.WriteAheadLog.Grpc.Client.csproj", "{2C2CF5F8-E5AE-491C-9017-C4F33EB65FF2}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GrpcLogServer", "samples\GrpcLogServer\GrpcLogServer.csproj", "{7FDEA709-487F-4037-A04C-EC546667585A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "GrpcLogClient", "samples\GrpcLogClient\GrpcLogClient.csproj", "{572228C1-F3E2-4B93-BAD6-933FD5429A65}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jaahas.WriteAheadLog", "src\Jaahas.WriteAheadLog\Jaahas.WriteAheadLog.csproj", "{B0544B92-3593-4A3B-ACAD-F95DCAE51A2B}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Jaahas.WriteAheadLog.Abstractions", "src\Jaahas.WriteAheadLog.Abstractions\Jaahas.WriteAheadLog.Abstractions.csproj", "{63DC5CB1-EF0A-4AC3-8128-11FEA10F03F8}"
 EndProject
 Global
 	GlobalSection(SolutionProperties) = preSolution
@@ -45,6 +57,12 @@ Global
 		{B2D68393-F9AA-47F8-8265-7F77F5A16426} = {ADFADB4B-0729-40E6-B241-6E1B89A8731C}
 		{7BB514E7-3F7E-4467-8BF9-5E9BB95F3532} = {ADFADB4B-0729-40E6-B241-6E1B89A8731C}
 		{728068F5-D53C-48D5-9157-D0AFF3B74D53} = {10A2813D-C970-4F6F-9A59-94F7C972257F}
+		{954D2C3E-0BE6-41E1-8195-1324ED6E0D43} = {10A2813D-C970-4F6F-9A59-94F7C972257F}
+		{2C2CF5F8-E5AE-491C-9017-C4F33EB65FF2} = {10A2813D-C970-4F6F-9A59-94F7C972257F}
+		{7FDEA709-487F-4037-A04C-EC546667585A} = {9EC81ADF-5CE2-4140-96BC-958CB9E0365C}
+		{572228C1-F3E2-4B93-BAD6-933FD5429A65} = {9EC81ADF-5CE2-4140-96BC-958CB9E0365C}
+		{B0544B92-3593-4A3B-ACAD-F95DCAE51A2B} = {10A2813D-C970-4F6F-9A59-94F7C972257F}
+		{63DC5CB1-EF0A-4AC3-8128-11FEA10F03F8} = {10A2813D-C970-4F6F-9A59-94F7C972257F}
 	EndGlobalSection
 	GlobalSection(ProjectConfigurationPlatforms) = postSolution
 		{D5F442BF-0969-4AF7-AD67-122D3F3C21A4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
@@ -63,6 +81,30 @@ Global
 		{728068F5-D53C-48D5-9157-D0AFF3B74D53}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{728068F5-D53C-48D5-9157-D0AFF3B74D53}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{728068F5-D53C-48D5-9157-D0AFF3B74D53}.Release|Any CPU.Build.0 = Release|Any CPU
+		{954D2C3E-0BE6-41E1-8195-1324ED6E0D43}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{954D2C3E-0BE6-41E1-8195-1324ED6E0D43}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{954D2C3E-0BE6-41E1-8195-1324ED6E0D43}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{954D2C3E-0BE6-41E1-8195-1324ED6E0D43}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2C2CF5F8-E5AE-491C-9017-C4F33EB65FF2}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2C2CF5F8-E5AE-491C-9017-C4F33EB65FF2}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2C2CF5F8-E5AE-491C-9017-C4F33EB65FF2}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2C2CF5F8-E5AE-491C-9017-C4F33EB65FF2}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7FDEA709-487F-4037-A04C-EC546667585A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7FDEA709-487F-4037-A04C-EC546667585A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7FDEA709-487F-4037-A04C-EC546667585A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7FDEA709-487F-4037-A04C-EC546667585A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{572228C1-F3E2-4B93-BAD6-933FD5429A65}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{572228C1-F3E2-4B93-BAD6-933FD5429A65}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{572228C1-F3E2-4B93-BAD6-933FD5429A65}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{572228C1-F3E2-4B93-BAD6-933FD5429A65}.Release|Any CPU.Build.0 = Release|Any CPU
+		{B0544B92-3593-4A3B-ACAD-F95DCAE51A2B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B0544B92-3593-4A3B-ACAD-F95DCAE51A2B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{B0544B92-3593-4A3B-ACAD-F95DCAE51A2B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{B0544B92-3593-4A3B-ACAD-F95DCAE51A2B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{63DC5CB1-EF0A-4AC3-8128-11FEA10F03F8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{63DC5CB1-EF0A-4AC3-8128-11FEA10F03F8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{63DC5CB1-EF0A-4AC3-8128-11FEA10F03F8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{63DC5CB1-EF0A-4AC3-8128-11FEA10F03F8}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU

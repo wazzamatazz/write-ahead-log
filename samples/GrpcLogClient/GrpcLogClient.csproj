@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+    <PropertyGroup>
+        <TargetFramework>net9.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <UserSecretsId>dotnet-GrpcLogClient-7d5759a9-de5f-408f-b1b0-a28358d3f4d0</UserSecretsId>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="Grpc.Net.ClientFactory" />
+        <PackageReference Include="Microsoft.Extensions.Hosting"/>
+    </ItemGroup>
+
+    <ItemGroup>
+      <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.DependencyInjection\Jaahas.WriteAheadLog.DependencyInjection.csproj" />
+      <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.Grpc.Client\Jaahas.WriteAheadLog.Grpc.Client.csproj" />
+    </ItemGroup>
+</Project>

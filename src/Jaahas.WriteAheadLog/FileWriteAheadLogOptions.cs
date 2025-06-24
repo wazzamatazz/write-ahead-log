@@ -1,9 +1,9 @@
 namespace Jaahas.WriteAheadLog;
 
 /// <summary>
-/// Options for <see cref="Log"/>.
+/// Options for <see cref="FileWriteAheadLog"/>.
 /// </summary>
-public class LogOptions {
+public class FileWriteAheadLogOptions {
 
     /// <summary>
     /// The directory where the write-ahead log segments will be stored.
@@ -35,7 +35,7 @@ public class LogOptions {
     /// <remarks>
     ///   Specifying an interval less than or equal to <see cref="TimeSpan.Zero"/> will disable
     ///   background flushing. When background flushing is disabled, flushes will only occur when
-    ///   the segment is closed or disposed, or when <see cref="Log.FlushAsync"/> is called.
+    ///   the segment is closed or disposed, or when <see cref="FileWriteAheadLog.FlushAsync"/> is called.
     /// </remarks>
     public TimeSpan FlushInterval { get; set; } = TimeSpan.FromSeconds(1);
     

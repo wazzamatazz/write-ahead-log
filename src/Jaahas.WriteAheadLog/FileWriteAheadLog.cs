@@ -13,14 +13,14 @@ using Microsoft.IO;
 namespace Jaahas.WriteAheadLog;
 
 /// <summary>
-/// <see cref="Log"/> is a Write-Ahead Log (WAL) implementation that provides a durable, append-only
+/// <see cref="FileWriteAheadLog"/> is a Write-Ahead Log (WAL) implementation that provides a durable, append-only
 /// log for storing messages.
 /// </summary>
 /// <remarks>
 ///
 /// <para>
 ///   Incoming messages are defined using read-only byte sequences. Use the <see cref="WriteAsync"/>
-///   method or an extension method overload defined in <see cref="LogExtensions"/> to write
+///   method or an extension method overload defined in <see cref="WriteAheadLogExtensions"/> to write
 ///   messages to the log. 
 /// </para>
 ///
@@ -33,7 +33,7 @@ namespace Jaahas.WriteAheadLog;
 /// <para>
 ///   Messages written to the log are written to the current writable segment and assigned a
 ///   sequence ID and timestamp. You can read messages from the log using the <see cref="ReadAllAsync"/>
-///   method or an extension method defined in <see cref="LogExtensions"/>.
+///   method or an extension method defined in <see cref="WriteAheadLogExtensions"/>.
 /// </para>
 ///
 /// <para>
@@ -43,11 +43,11 @@ namespace Jaahas.WriteAheadLog;
 /// </para>
 /// 
 /// </remarks>
-public sealed partial class Log : IAsyncDisposable {
+public sealed partial class FileWriteAheadLog : IWriteAheadLog {
     
     /// <summary>
     /// Provides recyclable memory streams to reduce memory allocations and improve performance
-    /// when writing messages to the log.
+    /// when writing entries to the log.
     /// </summary>
     internal static RecyclableMemoryStreamManager RecyclableMemoryStreamManager { get; } = new RecyclableMemoryStreamManager();
 
@@ -59,7 +59,7 @@ public sealed partial class Log : IAsyncDisposable {
     /// <summary>
     /// The logger for the log instance.
     /// </summary>
-    private readonly ILogger<Log> _logger;
+    private readonly ILogger<FileWriteAheadLog> _logger;
     
     /// <summary>
     /// The logger factory used to create loggers for internal components.
@@ -90,7 +90,7 @@ public sealed partial class Log : IAsyncDisposable {
     /// The options for configuring the log's behavior, such as data directory, segment size, and
     /// flush interval.
     /// </summary>
-    private readonly LogOptions _options;
+    private readonly FileWriteAheadLogOptions _options;
     
     /// <summary>
     /// The directory where the log data is stored.
@@ -143,7 +143,7 @@ public sealed partial class Log : IAsyncDisposable {
     
 
     /// <summary>
-    /// Creates a new <see cref="Log"/> insance.
+    /// Creates a new <see cref="FileWriteAheadLog"/> insance.
     /// </summary>
     /// <param name="options">
     ///   The log options.
@@ -153,7 +153,7 @@ public sealed partial class Log : IAsyncDisposable {
     ///   <see cref="TimeProvider.System"/> will be used.
     /// </param>
     /// <param name="logger">
-    ///   The logger for the <see cref="Log"/> instance.
+    ///   The logger for the <see cref="FileWriteAheadLog"/> instance.
     /// </param>
     /// <param name="loggerFactory">
     ///   The logger factory used to create loggers for internal components.
@@ -161,11 +161,11 @@ public sealed partial class Log : IAsyncDisposable {
     /// <exception cref="ArgumentNullException">
     ///   <paramref name="options"/> is <see langword="null"/>.
     /// </exception>
-    public Log(LogOptions options, TimeProvider? timeProvider = null, ILogger<Log>? logger = null, ILoggerFactory? loggerFactory = null) {
+    public FileWriteAheadLog(FileWriteAheadLogOptions options, TimeProvider? timeProvider = null, ILogger<FileWriteAheadLog>? logger = null, ILoggerFactory? loggerFactory = null) {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _timeProvider = timeProvider ?? TimeProvider.System;
         _loggerFactory = loggerFactory ?? Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance;
-        _logger = logger ?? _loggerFactory.CreateLogger<Log>();
+        _logger = logger ?? _loggerFactory.CreateLogger<FileWriteAheadLog>();
         
         var dataDir = string.IsNullOrWhiteSpace(options.DataDirectory) 
             ? "wal" 
@@ -174,15 +174,7 @@ public sealed partial class Log : IAsyncDisposable {
     }
     
     
-    /// <summary>
-    /// Initializes the log.
-    /// </summary>
-    /// <param name="cancellationToken">
-    ///   The cancellation token for the operation.
-    /// </param>
-    /// <exception cref="ObjectDisposedException">
-    ///   The log has been disposed.
-    /// </exception>
+    /// <inheritdoc/>
     public async Task InitAsync(CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
         
@@ -223,27 +215,7 @@ public sealed partial class Log : IAsyncDisposable {
     } 
     
     
-    /// <summary>
-    /// Writes a log message to the current segment.
-    /// </summary>
-    /// <param name="data">
-    ///  The log message to write.
-    /// </param>
-    /// <param name="cancellationToken">
-    ///   The cancellation token for the operation.
-    /// </param>
-    /// <returns>
-    ///   A <see cref="WriteResult"/> containing the sequence ID and timestamp of the written message.
-    /// </returns>
-    /// <exception cref="ObjectDisposedException">
-    ///   The log has been disposed.
-    /// </exception>
-    /// <exception cref="ArgumentNullException">
-    ///   <paramref name="data"/> is <see langword="null"/>.
-    /// </exception>
-    /// <remarks>
-    ///   Calling this method will initialize the log if it has not already been initialized.
-    /// </remarks>
+    /// <inheritdoc/>
     public async ValueTask<WriteResult> WriteAsync(ReadOnlySequence<byte> data, CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
@@ -331,7 +303,7 @@ public sealed partial class Log : IAsyncDisposable {
     /// <remarks>
     ///
     /// <para>
-    ///   Cleanup is also performed periodically in the background if the <see cref="LogOptions.SegmentCleanupInterval"/>
+    ///   Cleanup is also performed periodically in the background if the <see cref="FileWriteAheadLogOptions.SegmentCleanupInterval"/>
     ///   setting is greater than <see cref="TimeSpan.Zero"/>.
     /// </para>
     ///
@@ -353,26 +325,7 @@ public sealed partial class Log : IAsyncDisposable {
     }
     
     
-    /// <summary>
-    /// Reads entries from the log.
-    /// </summary>
-    /// <param name="options">
-    ///   The options for reading from the log.
-    /// </param>
-    /// <param name="cancellationToken">
-    ///   The cancellation token for the operation.
-    /// </param>
-    /// <returns>
-    ///   A stream of <see cref="LogEntry"/> objects read from the log. Ensure that you dispose of
-    ///   each <see cref="LogEntry"/> instance after use to ensure that underlying resources are
-    ///   released.
-    /// </returns>
-    /// <exception cref="ObjectDisposedException">
-    ///   The log has been disposed.
-    /// </exception>
-    /// <remarks>
-    ///   Calling this method will initialize the log if it has not already been initialized.
-    /// </remarks>
+    /// <inheritdoc/>
     public async IAsyncEnumerable<LogEntry> ReadAllAsync(LogReadOptions options, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
         

@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 namespace Jaahas.WriteAheadLog.DependencyInjection.Internal;
 
 /// <summary>
-/// Initialises all <see cref="Log"/> instances registered with the service provider.
+/// Initialises all <see cref="FileWriteAheadLog"/> instances registered with the service provider.
 /// </summary>
 internal sealed partial class LogInitService : BackgroundService {
     
@@ -29,7 +29,7 @@ internal sealed partial class LogInitService : BackgroundService {
                 break;
             }
             
-            var log = _provider.GetKeyedService<Log>(registration.Key);
+            var log = _provider.GetKeyedService<IWriteAheadLog>(registration.Key);
             if (log is null) {
                 continue;
             }

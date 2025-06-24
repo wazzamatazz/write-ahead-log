@@ -35,11 +35,8 @@ public sealed class FileCheckpointStore : ICheckpointStore, IAsyncDisposable {
     /// <param name="options">
     ///   The checkpoint store options.
     /// </param>
-    /// <exception cref="ArgumentNullException">
-    ///   <paramref name="options"/> is <see langword="null"/>.
-    /// </exception>
-    public FileCheckpointStore(FileCheckpointStoreOptions options) {
-        ArgumentNullException.ThrowIfNull(options);
+    public FileCheckpointStore(FileCheckpointStoreOptions? options = null) {
+        options ??= new FileCheckpointStoreOptions();
         
         var dataDir = Path.IsPathRooted(options.DataDirectory) 
             ? options.DataDirectory 

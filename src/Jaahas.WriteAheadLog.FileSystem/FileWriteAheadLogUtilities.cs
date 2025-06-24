@@ -2,68 +2,18 @@ using System.Buffers;
 using System.Buffers.Binary;
 using System.Diagnostics.CodeAnalysis;
 using System.IO.Hashing;
+using System.Runtime.CompilerServices;
 
 using Jaahas.WriteAheadLog.Internal;
 
-using Microsoft.Extensions.ObjectPool;
-
 namespace Jaahas.WriteAheadLog;
 
-/// <summary>
-/// Describes a single log entry in the Write-Ahead Log (WAL).
-/// </summary>
-/// <remarks>
-///   <see cref="LogEntry"/> instance must be disposed after use to release the underlying buffer
-///   holding the serialized entry.
-/// </remarks>
-public class LogEntry : IDisposable {
-
-    /// <summary>
-    /// The pool used to rent and return <see cref="LogEntry"/> instances.
-    /// </summary>
-    private static readonly ObjectPool<LogEntry> s_pool = new DefaultObjectPool<LogEntry>(new PooledLogEntryPolicy());
+public static class FileWriteAheadLogUtilities {
 
     /// <summary>
     /// The size of the serialized log entry header in bytes.
     /// </summary>
-    private const int HeaderSize = 24; // 4 + 4 + 8 + 8 (magic number, message body length, sequence ID, timestamp)
-
-    /// <summary>
-    /// Specifies if the <see cref="LogEntry"/> has been disposed.
-    /// </summary>
-    private bool _disposed;
-    
-    /// <summary>
-    /// The buffer holding the serialized entry.
-    /// </summary>
-    private byte[] _buffer = null!;
-
-    /// <summary>
-    /// The sequence ID for the log entry.
-    /// </summary>
-    public ulong SequenceId { get; private set; }
-    
-    /// <summary>
-    /// The timestamp of the log entry, measured in ticks.
-    /// </summary>
-    public long Timestamp { get; private set; }
-
-    /// <summary>
-    /// The data segment of the log entry, which contains the actual message payload.
-    /// </summary>
-    public ArraySegment<byte> Data { get; private set; }
-    
-    /// <summary>
-    /// The total size of the log entry in bytes, including the header, body, and checksum.
-    /// </summary>
-    public int TotalSize { get; private set; }
-
-    
-    /// <summary>
-    /// Creates a new <see cref="LogEntry"/> instance.
-    /// </summary>
-    private LogEntry() { }
-
+    private const int LogEntryHeaderSize = 24; // 4 + 4 + 8 + 8 (magic number, message body length, sequence ID, timestamp)
     
     /// <summary>
     /// Gets the serialized size of a log entry based on the length of the message body.
@@ -74,11 +24,12 @@ public class LogEntry : IDisposable {
     /// <returns>
     ///   The total size of the serialized log entry in bytes, including the header and checksum.
     /// </returns>
-    public static long GetSerializedSize(long messageLength) {
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal static long GetSerializedLogEntrySize(long messageLength) {
         ArgumentOutOfRangeException.ThrowIfLessThan(messageLength, 0);
         
         // 4 extra footer bytes for checksum
-        return HeaderSize + messageLength + 4;
+        return LogEntryHeaderSize + messageLength + 4;
     }
     
 
@@ -103,19 +54,19 @@ public class LogEntry : IDisposable {
     /// <exception cref="ArgumentNullException">
     ///   <paramref name="writer"/> is <see langword="null"/>.
     /// </exception>
-    public static long Write(IBufferWriter<byte> writer, ulong sequenceId, long timestamp, ReadOnlySequence<byte> message) {
+    public static long WriteLogEntryToBuffer(IBufferWriter<byte> writer, ulong sequenceId, long timestamp, ReadOnlySequence<byte> message) {
         ArgumentNullException.ThrowIfNull(writer);
         
         var messageLengthAsInt = (int) message.Length;
         
-        var buffer = writer.GetSpan((int) GetSerializedSize(message.Length));
+        var buffer = writer.GetSpan((int) GetSerializedLogEntrySize(message.Length));
         Constants.MessageMagicBytes.Span.CopyTo(buffer);
         BinaryPrimitives.WriteInt32LittleEndian(buffer[4..], messageLengthAsInt);
         BinaryPrimitives.WriteUInt64LittleEndian(buffer[8..], sequenceId);
         BinaryPrimitives.WriteInt64LittleEndian(buffer[16..], timestamp);
 
-        message.CopyTo(buffer[HeaderSize..]);
-        var footerStartPosition = HeaderSize + messageLengthAsInt;
+        message.CopyTo(buffer[LogEntryHeaderSize..]);
+        var footerStartPosition = LogEntryHeaderSize + messageLengthAsInt;
         
         var checksum = Crc32.HashToUInt32(buffer[..footerStartPosition]);
         BinaryPrimitives.WriteUInt32LittleEndian(buffer[footerStartPosition..], checksum);
@@ -125,7 +76,7 @@ public class LogEntry : IDisposable {
         return serializedSize;
     }
     
-
+    
     /// <summary>
     /// Reads a log entry from the specified read-only byte sequence.
     /// </summary>
@@ -143,10 +94,10 @@ public class LogEntry : IDisposable {
     ///   When a log entry is successfully read, the <paramref name="sequence"/> is advanced to the
     ///   position immediately after the end of the log entry.
     /// </remarks>
-    public static bool TryRead(ref ReadOnlySequence<byte> sequence, [NotNullWhen(true)] out LogEntry? entry) {
+    public static bool TryReadLogEntry(ref ReadOnlySequence<byte> sequence, [NotNullWhen(true)] out LogEntry? entry) {
         entry = null;
 
-        if (sequence.Length < HeaderSize) {
+        if (sequence.Length < LogEntryHeaderSize) {
             // Not enough data for a header so definitely not a valid entry.
             return false;
         }
@@ -201,8 +152,7 @@ public class LogEntry : IDisposable {
         var sequenceId = BinaryPrimitives.ReadUInt64LittleEndian(bufferSpan[8..]);
         var timestamp = BinaryPrimitives.ReadInt64LittleEndian(bufferSpan[16..]);
 
-        entry = s_pool.Get();
-        entry.Update(sequenceId, timestamp, buffer, 24, messageLength, 24 + messageLength + 4);
+        entry = LogEntry.Create(sequenceId, timestamp, buffer, 24, messageLength, ArrayPool<byte>.Shared);
         
         return true;
     }
@@ -305,61 +255,4 @@ public class LogEntry : IDisposable {
         return false;
     }
 
-
-    private void Update(ulong sequenceId, long timestamp, byte[] buffer, int offset, int count, int totalSize) {
-        SequenceId = sequenceId;
-        Timestamp = timestamp;
-        if (_buffer != null) {
-            ArrayPool<byte>.Shared.Return(_buffer);
-        }
-
-        _buffer = buffer;
-        Data = new ArraySegment<byte>(_buffer, offset, count);
-        TotalSize = totalSize;
-
-        _disposed = false;
-    }
-    
-
-    private void Reset() {
-        if (_buffer != null) {
-            ArrayPool<byte>.Shared.Return(_buffer);
-            _buffer = null!;
-        }
-        SequenceId = 0;
-        Timestamp = 0;
-        Data = default;
-        TotalSize = 0;
-    }
-
-
-    /// <inheritdoc/>
-    public void Dispose() {
-        if (_disposed) {
-            return;
-        }
-        
-        s_pool.Return(this);
-
-        _disposed = true;
-    }
-    
-
-    /// <summary>
-    /// Policy for renting and returning <see cref="LogEntry"/> instances from the object pool.
-    /// </summary>
-    private class PooledLogEntryPolicy : PooledObjectPolicy<LogEntry> {
-
-        /// <inheritdoc />
-        public override LogEntry Create() => new LogEntry();
-
-
-        /// <inheritdoc />
-        public override bool Return(LogEntry obj) {
-            obj.Reset();
-            return true;
-        }
-
-    }
-    
 }

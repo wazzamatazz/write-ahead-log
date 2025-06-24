@@ -46,12 +46,6 @@ namespace Jaahas.WriteAheadLog;
 public sealed partial class FileWriteAheadLog : IWriteAheadLog {
     
     /// <summary>
-    /// Provides recyclable memory streams to reduce memory allocations and improve performance
-    /// when writing entries to the log.
-    /// </summary>
-    internal static RecyclableMemoryStreamManager RecyclableMemoryStreamManager { get; } = new RecyclableMemoryStreamManager();
-
-    /// <summary>
     /// Specifies whether the log has been disposed.
     /// </summary>
     private bool _disposed;
@@ -706,7 +700,7 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
                     entries.Add(indexEntry);
                 }
                 
-                offset += item.TotalSize;
+                offset += FileWriteAheadLogUtilities.GetSerializedLogEntrySize(item.Data.Count);
             }
             finally {
                 item.Dispose();
@@ -792,6 +786,8 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
             if (previousWriterSegmentIndex is not null) {
                 _readOnlySegmentIndices.Add(new SegmentIndexWrapper(previousWriter.FilePath, previousWriterSegmentIndex.ToImmutable()));
             }
+
+            await previousWriter.DisposeAsync().ConfigureAwait(false);
         }
     }
     

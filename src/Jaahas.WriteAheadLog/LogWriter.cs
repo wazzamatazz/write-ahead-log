@@ -39,7 +39,7 @@ public sealed class LogWriter : IBufferWriter<byte>, IDisposable, IAsyncDisposab
     private RecyclableMemoryStream GetStream(int sizeHint) {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        return _stream ??= FileWriteAheadLog.RecyclableMemoryStreamManager.GetStream(
+        return _stream ??= WriteAheadLogUtilities.RecyclableMemoryStreamManager.GetStream(
             id: Guid.NewGuid(),
             tag: null,
             requiredSize: sizeHint);

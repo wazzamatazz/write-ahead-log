@@ -1,0 +1,87 @@
+syntax = "proto3";
+
+option csharp_namespace = "Jaahas.WriteAheadLog.Grpc";
+
+package jaahas.writeaheadlog.grpc;
+
+// The WAL service definition.
+service WriteAheadLogService {
+  // Lists available write-ahead logs on the server.
+  rpc List (GetLogsRequest) returns (GetLogsResponse);
+  // Writes a log entry.
+  rpc Write (WriteToLogRequest) returns (LogEntryPosition);
+  // Reads log entries.
+  rpc Read (ReadFromLogRequest) returns (stream LogEntry);
+}
+
+// Describes the position of an entry in a write-ahead log.
+message LogEntryPosition {
+  // The sequence ID for the log entry.
+  uint64 sequence_id = 1;
+  // The timestamp for the log entry.
+  int64 timestamp = 2;
+}
+
+
+// Describes an entry in a write-ahead log.
+message LogEntry {
+  // The position of the entry.
+  LogEntryPosition position = 1;
+  // The payload for the entry.
+  bytes data = 2;
+}
+
+
+// A request to list the available write-ahead longs.
+message GetLogsRequest { }
+
+// Describes a write-ahead log.
+message LogDescriptor {
+  // The log name.
+  string log_name = 1;
+  // The log description.
+  string description = 2;
+  // The maximum length of a log entry payload, in bytes. A value less than 1 indicates no limit.
+  int64 maximum_message_size = 3;
+}
+
+
+// The response to a request to retrieve the available logs.
+message GetLogsResponse {
+  // The descriptors for the available logs.
+  repeated LogDescriptor logs = 1;
+}
+
+
+// Describes the position to start from when reading entries from a write-ahead log.
+message ReadFromLogPosition {
+  // The type of the position.
+  oneof log_position_type {
+    // The sequence ID to start reading from.
+    uint64 sequence_id = 1;
+    // The timestamp to start reading from.
+    int64 timestamp = 2;
+  }
+}
+
+
+// A request to read entries from a write-ahead log.
+message ReadFromLogRequest {
+  // The name of the log to read from.
+  optional string log_name = 1;
+  // The starting position for the read.
+  optional ReadFromLogPosition position = 2;
+  // The maximum number of entries to read.
+  optional int64 limit = 3;
+  // Specifies if the read operation should continue to watch for new entries when it reaches the end of the log instead of completing.
+  optional bool watch_for_changes = 4;
+}
+
+
+// A request to write an entry to a write-ahead log.
+message WriteToLogRequest {
+  // The name of the log to write to.
+  optional string log_name = 1;
+  // The payload for the entry.
+  bytes data = 2;
+}

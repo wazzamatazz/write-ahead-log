@@ -20,8 +20,8 @@ namespace Jaahas.WriteAheadLog;
 /// <para>
 ///   The <see cref="LogReader"/> can be started and stopped using the <see cref="StartAsync"/>
 ///   and <see cref="StopAsync"/> methods respectively. The reader can be started and stopped
-///   multiple times and will continue processing entries from the last-known position in the
-///   log each time it starts.
+///   multiple times and by default will continue processing entries from the last-known position
+///   in the log each time it starts.
 /// </para>
 ///
 /// <para>
@@ -37,7 +37,7 @@ public sealed partial class LogReader : IAsyncDisposable {
     
     private readonly ILogger<LogReader> _logger;
 
-    private readonly Log _log;
+    private readonly IWriteAheadLog _log;
 
     private readonly ICheckpointStore? _checkpointStore;
     
@@ -76,7 +76,7 @@ public sealed partial class LogReader : IAsyncDisposable {
     /// Creates a new <see cref="LogReader"/> instance.
     /// </summary>
     /// <param name="log">
-    ///   The <see cref="Log"/> to read entries from.
+    ///   The <see cref="IWriteAheadLog"/> to read entries from.
     /// </param>
     /// <param name="checkpointStore">
     ///   The optional <see cref="ICheckpointStore"/> to use for persisting the last-known log
@@ -88,7 +88,7 @@ public sealed partial class LogReader : IAsyncDisposable {
     /// <exception cref="ArgumentNullException">
     ///   <paramref name="log"/> is <see langword="null"/>.
     /// </exception>
-    public LogReader(Log log, ICheckpointStore? checkpointStore, ILogger<LogReader>? logger = null) {
+    public LogReader(IWriteAheadLog log, ICheckpointStore? checkpointStore, ILogger<LogReader>? logger = null) {
         _log = log ?? throw new ArgumentNullException(nameof(log));
         _checkpointStore = checkpointStore;
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<LogReader>.Instance;

@@ -11,7 +11,7 @@ public class SparseIndexBenchmarks {
 
     private DirectoryInfo _dataDirectory = null!;
 
-    private Log _log = null!;
+    private FileWriteAheadLog _log = null!;
     
     [Params(500, 1000, 10_000, 50_000, 100_000)]
     public int SparseIndexInterval { get; set; }
@@ -22,7 +22,7 @@ public class SparseIndexBenchmarks {
         _dataDirectory = new DirectoryInfo(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString()));
         _dataDirectory.Create();
         
-        _log = new Log(new LogOptions() {
+        _log = new FileWriteAheadLog(new FileWriteAheadLogOptions() {
             DataDirectory = _dataDirectory.FullName,
             FlushInterval = TimeSpan.Zero,
             FlushBatchSize = 1_000,

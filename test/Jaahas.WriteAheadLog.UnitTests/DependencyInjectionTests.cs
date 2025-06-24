@@ -31,13 +31,13 @@ public class DependencyInjectionTests {
     [TestMethod]
     public async Task ShouldRegisterDefaultWriteAheadLog() {
         var builder = Host.CreateApplicationBuilder();
-        builder.Services.AddWriteAheadLog(options => {
+        builder.Services.AddFileWriteAheadLog(options => {
             options.DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!);
         });
         
         using var app = builder.Build();
         
-        var log = app.Services.GetRequiredService<Log>();
+        var log = app.Services.GetRequiredService<IWriteAheadLog>();
         await log.InitAsync(TestContext.CancellationTokenSource.Token);
 
         await log.WriteAsync(Enumerable.Repeat((byte) 1, 100).ToArray(), TestContext.CancellationTokenSource.Token);
@@ -47,13 +47,13 @@ public class DependencyInjectionTests {
     [TestMethod]
     public async Task ShouldRegisterNamedWriteAheadLog() {
         var builder = Host.CreateApplicationBuilder();
-        builder.Services.AddWriteAheadLog(TestContext.TestName!, options => {
+        builder.Services.AddFileWriteAheadLog(TestContext.TestName!, options => {
             options.DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!);
         });
         
         using var app = builder.Build();
         
-        var log = app.Services.GetRequiredKeyedService<Log>(TestContext.TestName!);
+        var log = app.Services.GetRequiredKeyedService<IWriteAheadLog>(TestContext.TestName!);
         await log.InitAsync(TestContext.CancellationTokenSource.Token);
 
         await log.WriteAsync(Enumerable.Repeat((byte) 1, 100).ToArray(), TestContext.CancellationTokenSource.Token);

@@ -5,20 +5,20 @@ A .NET library for writing to a file-based write-ahead log (WAL).
 
 # Getting Started
 
-You can register the `Log` service with your application's dependency injection container as follows:
+You can register a file-based `IWriteAheadLog` service with your application's dependency injection container as follows:
 
 ```csharp
-services.AddWriteAheadLog(options => {
+services.AddFileWriteAheadLog(options => {
     DataDirectory = "data/wal"
 });
 ```
 
-This registers the singleton `Log` service with the specified data directory and default values for other settings. The `Log` service can then be injected into your application components.
+This registers the singleton `IWriteAheadLog` service with the specified data directory and default values for other settings. The `IWriteAheadLog` service can then be injected into your application components.
 
 
 # Writing Log Entries
 
-To write log entries to the write-ahead log, use the `Log.WriteAsync` method or one of its extension method overloads:
+To write log entries to the write-ahead log, use the `IWriteAheadLog.WriteAsync` method or one of its extension method overloads:
 
 ```csharp
 await log.WriteAsync(Encoding.UTF8.GetBytes("Hello, World!"));
@@ -119,7 +119,7 @@ await foreach (var entry in log.ReadAllAsync(readOptions)) {
 
 # File Structure
 
-Log entries are written sequentially to the log's current writable segment, and each segment is stored in a separate file. A segment file begins with a fixed-size header that contains metadata about the segment, followed by a series of log entries. Each log entry consists of a header, a variable-length payload, and a footer.
+Log entries written to the file-based WAL are written sequentially to the log's current writable segment, and each segment is stored in a separate file. A segment file begins with a fixed-size header that contains metadata about the segment, followed by a series of log entries. Each log entry consists of a header, a variable-length payload, and a footer.
 
 Segment files use the naming convention `{yyyyMMddHHmmss}-{UUIDv7}.wal`, where `{yyyyMMddHHmmss}` is the timestamp that the segment was created at (truncated to the nearest second) and `{UUIDv7}` is a UUIDv7 value that is generated using the segment creation time. This allows for easy identification and ordering of segments based on their creation time.
 
@@ -173,7 +173,7 @@ packet-beta
 
 # Configuring Rollover and Retention Policies
 
-The `LogOptions` passed to the `Log` constructor define the rollover and retention policies for the write-ahead log. Segments can be rolled over based on any combination of size, time, or number of entries. Old segments can be retained for a specified period of time and/or removed once the number of closed segments exceeds a limit. You can also control how often clean-up is performed to remove old segments.
+The `FileWriteAheadLogOptions` passed to the `FileWriteAheadLog` constructor define the rollover and retention policies for the write-ahead log. Segments can be rolled over based on any combination of size, time, or number of entries. Old segments can be retained for a specified period of time and/or removed once the number of closed segments exceeds a limit. You can also control how often clean-up is performed to remove old segments.
 
 For example, the following configuration rolls over segments when they reach 1 MB in size, retains a maximum of 100 closed segments for 7 days, and performs clean-up every 12 hours:
 

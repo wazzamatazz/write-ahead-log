@@ -40,7 +40,7 @@ public class LogWriterTests {
     
     [TestMethod]
     public async Task ShouldWriteJsonMessage() {
-        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+        await using var log = ActivatorUtilities.CreateInstance<FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!)
         });
         
@@ -68,7 +68,7 @@ public class LogWriterTests {
     
     [TestMethod]
     public async Task ShouldWriteMultipleJsonMessages() {
-        await using var log = ActivatorUtilities.CreateInstance<Log>(s_serviceProvider, new LogOptions() {
+        await using var log = ActivatorUtilities.CreateInstance<FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!)
         });
         

@@ -116,7 +116,7 @@ public sealed partial class WriteAheadLogService : WriteAheadLog.Grpc.WriteAhead
             WatchForChanges: request is { HasWatchForChanges: true, WatchForChanges: true });
 
         try {
-            await foreach (var entry in log.ReadAllAsync(readOptions, context.CancellationToken).ConfigureAwait(false)) {
+            await foreach (var entry in log.ReadAsync(readOptions, context.CancellationToken).ConfigureAwait(false)) {
                 try {
                     await responseStream.WriteAsync(new LogEntry() {
                         Position = new LogEntryPosition() {

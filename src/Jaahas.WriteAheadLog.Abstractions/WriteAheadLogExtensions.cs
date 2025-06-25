@@ -55,7 +55,7 @@ public static class WriteAheadLogExtensions {
     /// </returns>
     public static async IAsyncEnumerable<LogEntry> ReadAllAsync(this IWriteAheadLog log, LogPosition position = default, long count = -1, bool watchForChanges = false, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
         ArgumentNullException.ThrowIfNull(log);
-        await foreach (var entry in log.ReadAllAsync(new LogReadOptions(Position: position, Limit: count, WatchForChanges: watchForChanges), cancellationToken).ConfigureAwait(false)) {
+        await foreach (var entry in log.ReadAsync(new LogReadOptions(Position: position, Limit: count, WatchForChanges: watchForChanges), cancellationToken).ConfigureAwait(false)) {
             yield return entry;
         }
     }

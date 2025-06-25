@@ -5,6 +5,8 @@ using Google.Protobuf;
 
 using Grpc.Core;
 
+using Nito.AsyncEx;
+
 namespace Jaahas.WriteAheadLog.Grpc;
 
 /// <summary>
@@ -20,6 +22,10 @@ public sealed class GrpcWriteAheadLog : IWriteAheadLog {
     private readonly GrpcWriteAheadLogOptions _options;
     
     private readonly CancellationTokenSource _disposedTokenSource = new CancellationTokenSource();
+
+    private bool _channelReady;
+    
+    private readonly AsyncLock _initLock = new AsyncLock();
 
 
     /// <summary>
@@ -38,18 +44,54 @@ public sealed class GrpcWriteAheadLog : IWriteAheadLog {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _options = options ?? new GrpcWriteAheadLogOptions();
     }
-    
+
 
     /// <inheritdoc />
-    public Task InitAsync(CancellationToken cancellationToken = default) => Task.CompletedTask;
+    public async Task InitAsync(CancellationToken cancellationToken = default) {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        
+        if (_channelReady) {
+            return;
+        }
+        
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_disposedTokenSource.Token, cancellationToken);
+        using var _ = await _initLock.LockAsync(cts.Token).ConfigureAwait(false);
+        
+        if (_channelReady) {
+            return;
+        }
+
+        double backoff = 1000;
+        const int maxBackoff = 30_000;
+        const double backoffMultiplier = 1.5;
+        
+        while (!cts.IsCancellationRequested) {
+            try {
+                await _client.ListAsync(new GetLogsRequest(), cancellationToken: cts.Token).ConfigureAwait(false);
+                _channelReady = true;
+                break;
+            }
+            catch (RpcException e) when (e.StatusCode == StatusCode.Unavailable) {
+                await Task.Delay(TimeSpan.FromMilliseconds(backoff), cts.Token).ConfigureAwait(false);
+                if (backoff < maxBackoff) {
+                    backoff *= backoffMultiplier;
+                    if (backoff > maxBackoff) {
+                        backoff = maxBackoff;
+                    }
+                }
+            } 
+        }
+    }
 
 
     /// <inheritdoc />
     public async ValueTask<WriteResult> WriteAsync(ReadOnlySequence<byte> data, CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
         
+        await InitAsync(cancellationToken).ConfigureAwait(false);
+        
         var result = await _client.WriteAsync(new WriteToLogRequest() {
-            LogName = _options.LogName,
+            LogName = _options.LogName ?? string.Empty,
             Data = FromReadOnlySequence(data)
         }, cancellationToken: cancellationToken).ConfigureAwait(false);
 
@@ -104,6 +146,8 @@ public sealed class GrpcWriteAheadLog : IWriteAheadLog {
     public async IAsyncEnumerable<WriteAheadLog.LogEntry> ReadAllAsync(LogReadOptions options, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
         
+        await InitAsync(cancellationToken).ConfigureAwait(false);
+        
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);
         
         var request = new ReadFromLogRequest() {
@@ -124,8 +168,8 @@ public sealed class GrpcWriteAheadLog : IWriteAheadLog {
         if (options.Limit > 0) {
             request.Limit = options.Limit;
         }
-
-        var stream = _client.Read(request, cancellationToken: cts.Token);
+        
+        var stream = _client.ReadStream(request, cancellationToken: cts.Token);
 
         await foreach (var item in stream.ResponseStream.ReadAllAsync(cts.Token).ConfigureAwait(false)) {
             yield return WriteAheadLog.LogEntry.Create(item.Position.SequenceId, item.Position.Timestamp, item.Data.Span);

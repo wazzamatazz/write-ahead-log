@@ -50,12 +50,19 @@ public sealed class GrpcWriteAheadLog : IWriteAheadLog {
     public async ValueTask InitAsync(CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
         
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_disposedTokenSource.Token, cancellationToken);
+        await InitCoreAsync(cts.Token).ConfigureAwait(false);
+    }
+
+
+    private async ValueTask InitCoreAsync(CancellationToken cancellationToken) {
         if (_channelReady) {
             return;
         }
         
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_disposedTokenSource.Token, cancellationToken);
-        using var _ = await _initLock.LockAsync(cts.Token).ConfigureAwait(false);
+        using var _ = await _initLock.LockAsync(cancellationToken).ConfigureAwait(false);
+        
+        ObjectDisposedException.ThrowIf(_disposed, this);
         
         if (_channelReady) {
             return;
@@ -65,14 +72,14 @@ public sealed class GrpcWriteAheadLog : IWriteAheadLog {
         const int maxBackoff = 30_000;
         const double backoffMultiplier = 1.5;
         
-        while (!cts.IsCancellationRequested) {
+        while (!cancellationToken.IsCancellationRequested) {
             try {
-                await _client.ListAsync(new GetLogsRequest(), cancellationToken: cts.Token).ConfigureAwait(false);
+                await _client.ListAsync(new GetLogsRequest(), cancellationToken: cancellationToken).ConfigureAwait(false);
                 _channelReady = true;
                 break;
             }
             catch (RpcException e) when (e.StatusCode == StatusCode.Unavailable) {
-                await Task.Delay(TimeSpan.FromMilliseconds(backoff), cts.Token).ConfigureAwait(false);
+                await Task.Delay(TimeSpan.FromMilliseconds(backoff), cancellationToken).ConfigureAwait(false);
                 if (backoff < maxBackoff) {
                     backoff *= backoffMultiplier;
                     if (backoff > maxBackoff) {
@@ -88,17 +95,38 @@ public sealed class GrpcWriteAheadLog : IWriteAheadLog {
     public async ValueTask<WriteResult> WriteAsync(ReadOnlySequence<byte> data, CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
         
-        await InitAsync(cancellationToken).ConfigureAwait(false);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_disposedTokenSource.Token, cancellationToken);
+        
+        await InitCoreAsync(cts.Token).ConfigureAwait(false);
         
         var result = await _client.WriteAsync(new WriteToLogRequest() {
             LogName = _options.LogName ?? string.Empty,
             Data = FromReadOnlySequence(data)
-        }, cancellationToken: cancellationToken).ConfigureAwait(false);
+        }, cancellationToken: cts.Token).ConfigureAwait(false);
 
         return new WriteResult(result.SequenceId, result.Timestamp);
     }
 
-    
+
+    /// <inheritdoc />
+    public async IAsyncEnumerable<WriteResult> WriteAsync(IAsyncEnumerable<ReadOnlySequence<byte>> data, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentNullException.ThrowIfNull(data);
+        
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_disposedTokenSource.Token, cancellationToken);
+        
+        await InitCoreAsync(cts.Token).ConfigureAwait(false);
+
+        using var stream = _client.WriteStream(cancellationToken: cts.Token);
+
+        _ = ProcessWriteStreamAsync(_options.LogName ?? string.Empty, data, stream.RequestStream, cts.Token);
+        
+        await foreach (var result in stream.ResponseStream.ReadAllAsync(cts.Token).ConfigureAwait(false)) {
+            yield return new WriteResult(result.SequenceId, result.Timestamp);
+        }
+    }
+
+
     private static ByteString FromReadOnlySequence(ReadOnlySequence<byte> sequence) {
         if (sequence.IsSingleSegment) {
             return ByteString.CopyFrom(sequence.First.Span);
@@ -141,14 +169,33 @@ public sealed class GrpcWriteAheadLog : IWriteAheadLog {
         return ByteString.FromStream(stream);
     }
 
+    
+    private static async Task ProcessWriteStreamAsync(
+        string logName,
+        IAsyncEnumerable<ReadOnlySequence<byte>> data,
+        IClientStreamWriter<WriteToLogRequest> destination,
+        CancellationToken cancellationToken
+    ) {
+        try {
+            await foreach (var item in data.WithCancellation(cancellationToken).ConfigureAwait(false)) {
+                var request = new WriteToLogRequest() {
+                    LogName = logName,
+                    Data = FromReadOnlySequence(item)
+                };
+                await destination.WriteAsync(request, cancellationToken).ConfigureAwait(false);
+            }
+        }
+        catch { }
+    }
+    
 
     /// <inheritdoc />
-    public async IAsyncEnumerable<WriteAheadLog.LogEntry> ReadAllAsync(LogReadOptions options, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
+    public async IAsyncEnumerable<WriteAheadLog.LogEntry> ReadAsync(LogReadOptions options, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
         
-        await InitAsync(cancellationToken).ConfigureAwait(false);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_disposedTokenSource.Token, cancellationToken);
         
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);
+        await InitCoreAsync(cts.Token).ConfigureAwait(false);
         
         var request = new ReadFromLogRequest() {
             LogName = _options.LogName ?? string.Empty,

@@ -169,7 +169,7 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
     
     
     /// <inheritdoc/>
-    public async Task InitAsync(CancellationToken cancellationToken = default) {
+    public async ValueTask InitAsync(CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
         
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);

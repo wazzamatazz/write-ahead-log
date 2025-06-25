@@ -47,7 +47,7 @@ public sealed class GrpcWriteAheadLog : IWriteAheadLog {
 
 
     /// <inheritdoc />
-    public async Task InitAsync(CancellationToken cancellationToken = default) {
+    public async ValueTask InitAsync(CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
         
         if (_channelReady) {

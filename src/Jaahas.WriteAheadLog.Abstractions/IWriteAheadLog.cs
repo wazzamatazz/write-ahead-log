@@ -10,10 +10,13 @@ public interface IWriteAheadLog : IAsyncDisposable {
     /// <param name="cancellationToken">
     ///   The cancellation token for the operation.
     /// </param>
+    /// <returns>
+    ///   A <see cref="ValueTask"/> that completes when the log is initialised.
+    /// </returns>
     /// <exception cref="ObjectDisposedException">
     ///   The log has been disposed.
     /// </exception>
-    Task InitAsync(CancellationToken cancellationToken = default);
+    ValueTask InitAsync(CancellationToken cancellationToken = default);
 
 
     /// <summary>

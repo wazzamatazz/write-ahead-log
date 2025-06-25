@@ -13,6 +13,7 @@
     </ItemGroup>
 
     <ItemGroup>
+      <ProjectReference Include="..\Jaahas.WriteAheadLog.DependencyInjection.Abstractions\Jaahas.WriteAheadLog.DependencyInjection.Abstractions.csproj" />
       <ProjectReference Include="..\Jaahas.WriteAheadLog.FileSystem\Jaahas.WriteAheadLog.FileSystem.csproj" />
     </ItemGroup>
 

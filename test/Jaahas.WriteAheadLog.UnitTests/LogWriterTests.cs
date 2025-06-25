@@ -57,7 +57,7 @@ public class LogWriterTests {
 
         TestContext.CancellationTokenSource.CancelAfter(10_000);
         
-        await foreach (var item in log.ReadAllAsync(new LogReadOptions(Limit: 1), TestContext.CancellationTokenSource.Token)) {
+        await foreach (var item in log.ReadAsync(new LogReadOptions(Limit: 1), TestContext.CancellationTokenSource.Token)) {
             var json = JsonDocument.Parse(item.Data).RootElement;
             item.Dispose();
             
@@ -89,7 +89,7 @@ public class LogWriterTests {
 
         var count = 0;
         
-        await foreach (var item in log.ReadAllAsync(new LogReadOptions(Limit: 10), TestContext.CancellationTokenSource.Token)) {
+        await foreach (var item in log.ReadAsync(new LogReadOptions(Limit: 10), TestContext.CancellationTokenSource.Token)) {
             ++count;
             var json = JsonDocument.Parse(item.Data).RootElement;
             item.Dispose();

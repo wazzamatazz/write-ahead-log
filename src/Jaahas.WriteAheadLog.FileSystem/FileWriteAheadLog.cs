@@ -31,7 +31,7 @@ namespace Jaahas.WriteAheadLog.FileSystem;
 ///
 /// <para>
 ///   Messages written to the log are written to the current writable segment and assigned a
-///   sequence ID and timestamp. You can read messages from the log using the <see cref="ReadAllAsync"/>
+///   sequence ID and timestamp. You can read messages from the log using the <see cref="ReadAsync"/>
 ///   method or an extension method defined in <see cref="WriteAheadLogExtensions"/>.
 /// </para>
 ///
@@ -217,23 +217,21 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
         
         using var handle = await _writeLock.LockAsync(cts.Token).ConfigureAwait(false);
         
-        // Check if we need to roll over to a new segment.
-        var rolloverCheck = IsRolloverRequired(data.Length);
-        if (rolloverCheck.Rollover) {
-            await RolloverCoreAsync(rolloverCheck.Reason, cts.Token).ConfigureAwait(false);
-        }
-
-        var timestamp = _timeProvider.GetTimestamp();
-        var bytesWritten = await _writer!.WriteAsync(data, ++_lastSequenceId, timestamp, cts.Token).ConfigureAwait(false);
-        _lastTimestamp = timestamp;
-
-        if (_options.SparseIndexInterval > 0 && _writer.Header.MessageCount % _options.SparseIndexInterval == 0) {
-            // Add an index entry for this message.
-            var entry = new MessageIndexEntry(_lastSequenceId, _lastTimestamp, _writer.Header.Size - bytesWritten);
-            _writerSegmentIndex!.AddEntry(entry);
-        }
+        return await WriteCoreAsync(data, cts.Token).ConfigureAwait(false);
+    }
+    
+    
+    public async IAsyncEnumerable<WriteResult> WriteAsync(IAsyncEnumerable<ReadOnlySequence<byte>> data, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
+        ObjectDisposedException.ThrowIf(_disposed, this);
         
-        return new WriteResult(_lastSequenceId, _lastTimestamp);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);
+        await InitCoreAsync(cts.Token).ConfigureAwait(false);
+        
+        await foreach (var item in data.WithCancellation(cts.Token).ConfigureAwait(false)) {
+            using var handle = await _writeLock.LockAsync(cts.Token).ConfigureAwait(false);
+            var result = await WriteCoreAsync(item, cts.Token).ConfigureAwait(false);
+            yield return result;
+        }
     }
     
 
@@ -319,7 +317,7 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
     
     
     /// <inheritdoc/>
-    public async IAsyncEnumerable<LogEntry> ReadAllAsync(LogReadOptions options, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
+    public async IAsyncEnumerable<LogEntry> ReadAsync(LogReadOptions options, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
         
         var startingTimestamp = options.Position.Timestamp ?? -1;
@@ -709,6 +707,27 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
         return readOnly
             ? new ImmutableSegmentIndex(header, entries)
             : new MutableSegmentIndex(header, entries);
+    }
+
+
+    private async ValueTask<WriteResult> WriteCoreAsync(ReadOnlySequence<byte> data, CancellationToken cancellationToken) {
+        // Check if we need to roll over to a new segment.
+        var rolloverCheck = IsRolloverRequired(data.Length);
+        if (rolloverCheck.Rollover) {
+            await RolloverCoreAsync(rolloverCheck.Reason, cancellationToken).ConfigureAwait(false);
+        }
+
+        var timestamp = _timeProvider.GetTimestamp();
+        var bytesWritten = await _writer!.WriteAsync(data, ++_lastSequenceId, timestamp, cancellationToken).ConfigureAwait(false);
+        _lastTimestamp = timestamp;
+
+        if (_options.SparseIndexInterval > 0 && _writer.Header.MessageCount % _options.SparseIndexInterval == 0) {
+            // Add an index entry for this message.
+            var entry = new MessageIndexEntry(_lastSequenceId, _lastTimestamp, _writer.Header.Size - bytesWritten);
+            _writerSegmentIndex!.AddEntry(entry);
+        }
+        
+        return new WriteResult(_lastSequenceId, _lastTimestamp);
     }
     
     

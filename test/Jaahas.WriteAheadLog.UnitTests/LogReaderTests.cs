@@ -1,3 +1,5 @@
+using Jaahas.WriteAheadLog.FileSystem;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -38,7 +40,7 @@ public class LogReaderTests {
     
     [TestMethod]
     public async Task ShouldReadLogEntries() {
-        await using var log = ActivatorUtilities.CreateInstance<FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
+        await using var log = ActivatorUtilities.CreateInstance<FileSystem.FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
             ReadPollingInterval = TimeSpan.FromMilliseconds(10)
         });
@@ -80,7 +82,7 @@ public class LogReaderTests {
     
     [TestMethod]
     public async Task ShouldReadLogEntriesFromStartPosition() {
-        await using var log = ActivatorUtilities.CreateInstance<FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
+        await using var log = ActivatorUtilities.CreateInstance<FileSystem.FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
             ReadPollingInterval = TimeSpan.FromMilliseconds(10)
         });
@@ -122,7 +124,7 @@ public class LogReaderTests {
     
     [TestMethod]
     public async Task ShouldOverrideExistingCheckpoint() {
-        await using var log = ActivatorUtilities.CreateInstance<FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
+        await using var log = ActivatorUtilities.CreateInstance<FileSystem.FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!),
             ReadPollingInterval = TimeSpan.FromMilliseconds(10)
         });

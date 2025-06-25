@@ -1,6 +1,6 @@
 using System.Collections.Immutable;
 
-namespace Jaahas.WriteAheadLog.Internal;
+namespace Jaahas.WriteAheadLog.FileSystem.Internal;
 
 internal abstract class SegmentIndex {
     

@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 
 using Nito.AsyncEx;
 
-namespace Jaahas.WriteAheadLog.Internal;
+namespace Jaahas.WriteAheadLog.FileSystem.Internal;
 
 /// <summary>
 /// A reader for WAL segments stored in file system files.

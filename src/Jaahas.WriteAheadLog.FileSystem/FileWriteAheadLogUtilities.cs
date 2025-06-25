@@ -4,9 +4,9 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO.Hashing;
 using System.Runtime.CompilerServices;
 
-using Jaahas.WriteAheadLog.Internal;
+using Jaahas.WriteAheadLog.FileSystem.Internal;
 
-namespace Jaahas.WriteAheadLog;
+namespace Jaahas.WriteAheadLog.FileSystem;
 
 public static class FileWriteAheadLogUtilities {
 

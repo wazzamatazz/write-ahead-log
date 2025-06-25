@@ -1,4 +1,4 @@
-namespace Jaahas.WriteAheadLog.Internal;
+namespace Jaahas.WriteAheadLog.FileSystem.Internal;
 
 internal record FileSegmentWriterOptions(
     string Name,

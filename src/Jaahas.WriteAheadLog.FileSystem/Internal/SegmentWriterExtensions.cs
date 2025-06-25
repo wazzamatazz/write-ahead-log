@@ -1,6 +1,6 @@
 using System.Buffers;
 
-namespace Jaahas.WriteAheadLog.Internal;
+namespace Jaahas.WriteAheadLog.FileSystem.Internal;
 
 /// <summary>
 /// Extensions for <see cref="SegmentWriter"/>.

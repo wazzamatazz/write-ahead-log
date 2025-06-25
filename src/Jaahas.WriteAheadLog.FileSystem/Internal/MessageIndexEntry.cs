@@ -1,4 +1,4 @@
-namespace Jaahas.WriteAheadLog.Internal;
+namespace Jaahas.WriteAheadLog.FileSystem.Internal;
 
 /// <summary>
 /// An entry in the write-ahead log's sparse message index.

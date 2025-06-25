@@ -1,4 +1,4 @@
-namespace Jaahas.WriteAheadLog.Internal;
+namespace Jaahas.WriteAheadLog.FileSystem.Internal;
 
 /// <summary>
 /// An index for a read-only segment.

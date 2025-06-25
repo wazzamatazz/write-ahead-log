@@ -1,5 +1,7 @@
 using BenchmarkDotNet.Attributes;
 
+using Jaahas.WriteAheadLog.FileSystem;
+
 namespace Jaahas.WriteAheadLog.Benchmarks;
 
 [MemoryDiagnoser]
@@ -11,7 +13,7 @@ public class SparseIndexBenchmarks {
 
     private DirectoryInfo _dataDirectory = null!;
 
-    private FileWriteAheadLog _log = null!;
+    private FileSystem.FileWriteAheadLog _log = null!;
     
     [Params(500, 1000, 10_000, 50_000, 100_000)]
     public int SparseIndexInterval { get; set; }
@@ -22,7 +24,7 @@ public class SparseIndexBenchmarks {
         _dataDirectory = new DirectoryInfo(Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString()));
         _dataDirectory.Create();
         
-        _log = new FileWriteAheadLog(new FileWriteAheadLogOptions() {
+        _log = new FileSystem.FileWriteAheadLog(new FileWriteAheadLogOptions() {
             DataDirectory = _dataDirectory.FullName,
             FlushInterval = TimeSpan.Zero,
             FlushBatchSize = 1_000,

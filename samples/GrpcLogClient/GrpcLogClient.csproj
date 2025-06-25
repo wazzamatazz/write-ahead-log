@@ -13,7 +13,6 @@
     </ItemGroup>
 
     <ItemGroup>
-      <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.DependencyInjection\Jaahas.WriteAheadLog.DependencyInjection.csproj" />
-      <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.Grpc.Client\Jaahas.WriteAheadLog.Grpc.Client.csproj" />
+      <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.Grpc\Jaahas.WriteAheadLog.Grpc.csproj" />
     </ItemGroup>
 </Project>

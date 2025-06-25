@@ -1,4 +1,4 @@
-namespace Jaahas.WriteAheadLog;
+namespace Jaahas.WriteAheadLog.FileSystem;
 
 /// <summary>
 /// Options for <see cref="FileWriteAheadLog"/>.

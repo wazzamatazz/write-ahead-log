@@ -17,9 +17,7 @@ builder.Services.AddGrpcClient<WriteAheadLogService.WriteAheadLogServiceClient>(
 builder.Services.AddSingleton<ICheckpointStore, FileCheckpointStore>();
 
 builder.Services.AddWriteAheadLogServices()
-    .AddWriteAheadLog(
-        string.Empty,
-        (provider, _) => ActivatorUtilities.CreateInstance<GrpcWriteAheadLog>(provider, new GrpcWriteAheadLogOptions()));
+    .AddGrpc(_ => { });
 
 var host = builder.Build();
 host.Run();

@@ -1,4 +1,6 @@
-﻿using Jaahas.WriteAheadLog.Internal;
+﻿using Jaahas.WriteAheadLog.FileSystem.Internal;
+
+using FileSegmentWriter = Jaahas.WriteAheadLog.FileSystem.Internal.FileSegmentWriter;
 
 namespace Jaahas.WriteAheadLog.UnitTests;
 

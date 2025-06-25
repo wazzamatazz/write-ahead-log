@@ -5,12 +5,11 @@ using System.Diagnostics.CodeAnalysis;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 
-using Jaahas.WriteAheadLog.Internal;
+using Jaahas.WriteAheadLog.FileSystem.Internal;
 
 using Microsoft.Extensions.Logging;
-using Microsoft.IO;
 
-namespace Jaahas.WriteAheadLog;
+namespace Jaahas.WriteAheadLog.FileSystem;
 
 /// <summary>
 /// <see cref="FileWriteAheadLog"/> is a Write-Ahead Log (WAL) implementation that provides a durable, append-only

@@ -1,4 +1,4 @@
-namespace Jaahas.WriteAheadLog;
+namespace Jaahas.WriteAheadLog.FileSystem;
 
 /// <summary>
 /// Describes the reason for a segment rollover in the Write-Ahead Log (WAL).

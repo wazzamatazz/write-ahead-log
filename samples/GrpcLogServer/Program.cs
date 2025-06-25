@@ -8,7 +8,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddGrpc();
 
 builder.Services.AddWriteAheadLogServices()
-    .AddFileWriteAheadLog(string.Empty, options => {
+    .AddFile(string.Empty, options => {
         options.MaxSegmentMessageCount = 10;
         options.SegmentRetentionLimit = 5;
         options.SegmentCleanupInterval = TimeSpan.FromMinutes(1);

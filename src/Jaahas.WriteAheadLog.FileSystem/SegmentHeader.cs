@@ -1,4 +1,4 @@
-namespace Jaahas.WriteAheadLog;
+namespace Jaahas.WriteAheadLog.FileSystem;
 
 /// <summary>
 /// Describes the header of a segment in the Write-Ahead Log (WAL).

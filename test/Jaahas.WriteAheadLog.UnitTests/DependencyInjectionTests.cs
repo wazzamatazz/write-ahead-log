@@ -33,7 +33,7 @@ public class DependencyInjectionTests {
         var builder = Host.CreateApplicationBuilder();
         builder.Services
             .AddWriteAheadLogServices()
-            .AddFileWriteAheadLog(TestContext.TestName!, options => {
+            .AddFile(TestContext.TestName!, options => {
                 options.DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!);
             });
         

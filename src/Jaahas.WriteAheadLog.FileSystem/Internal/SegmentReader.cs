@@ -1,7 +1,7 @@
 using System.IO.Pipelines;
 using System.Runtime.CompilerServices;
 
-namespace Jaahas.WriteAheadLog.Internal;
+namespace Jaahas.WriteAheadLog.FileSystem.Internal;
 
 /// <summary>
 /// Base class for reading segments from a write-ahead log.

@@ -1,6 +1,8 @@
 using BenchmarkDotNet.Attributes;
 using BenchmarkDotNet.Diagnostics.dotMemory;
 
+using Jaahas.WriteAheadLog.FileSystem;
+
 namespace Jaahas.WriteAheadLog.Benchmarks;
 
 [MemoryDiagnoser]
@@ -36,7 +38,7 @@ public class LogWriteBenchmarks {
 
     [Benchmark]
     public async Task WriteToLog() {
-        await using var log = new FileWriteAheadLog(new FileWriteAheadLogOptions() {
+        await using var log = new FileSystem.FileWriteAheadLog(new FileWriteAheadLogOptions() {
             DataDirectory = _iterationDirectory.FullName,
             FlushInterval = TimeSpan.Zero,
             FlushBatchSize = 1_000,

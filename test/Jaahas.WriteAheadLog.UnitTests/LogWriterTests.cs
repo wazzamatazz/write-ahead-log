@@ -1,5 +1,7 @@
 using System.Text.Json;
 
+using Jaahas.WriteAheadLog.FileSystem;
+
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -40,7 +42,7 @@ public class LogWriterTests {
     
     [TestMethod]
     public async Task ShouldWriteJsonMessage() {
-        await using var log = ActivatorUtilities.CreateInstance<FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
+        await using var log = ActivatorUtilities.CreateInstance<FileSystem.FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!)
         });
         
@@ -68,7 +70,7 @@ public class LogWriterTests {
     
     [TestMethod]
     public async Task ShouldWriteMultipleJsonMessages() {
-        await using var log = ActivatorUtilities.CreateInstance<FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
+        await using var log = ActivatorUtilities.CreateInstance<FileSystem.FileWriteAheadLog>(s_serviceProvider, new FileWriteAheadLogOptions() {
             DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!)
         });
         

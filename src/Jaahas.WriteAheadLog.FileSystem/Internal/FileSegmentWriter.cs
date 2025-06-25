@@ -5,7 +5,7 @@ using System.Runtime.CompilerServices;
 
 using Microsoft.Extensions.Logging;
 
-namespace Jaahas.WriteAheadLog.Internal;
+namespace Jaahas.WriteAheadLog.FileSystem.Internal;
 
 internal sealed partial class FileSegmentWriter : SegmentWriter {
 

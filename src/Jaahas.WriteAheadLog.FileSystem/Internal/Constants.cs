@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace Jaahas.WriteAheadLog.Internal;
+namespace Jaahas.WriteAheadLog.FileSystem.Internal;
 
 internal static class Constants {
 

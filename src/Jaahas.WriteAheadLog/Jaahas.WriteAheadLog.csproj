@@ -1,20 +1,23 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
-    <PropertyGroup>
-        <TargetFramework>net9.0</TargetFramework>
-        <RootNamespace>Jaahas.WriteAheadLog</RootNamespace>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
-        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-        <LangVersion>preview</LangVersion>
-    </PropertyGroup>
-
-    <ItemGroup>
-      <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
-      <PackageReference Include="Microsoft.Extensions.ObjectPool" />
-      <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" />
-      <PackageReference Include="Nito.AsyncEx.Coordination" />
-      <PackageReference Include="System.IO.Hashing" />
-    </ItemGroup>
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>Jaahas.WriteAheadLog</RootNamespace>
+  </PropertyGroup>
+  
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
+    
+    <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" />
+    <PackageReference Include="Nito.AsyncEx.Coordination" />
+    <PackageReference Include="System.IO.Hashing" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <ProjectReference Include="..\Jaahas.WriteAheadLog.Abstractions\Jaahas.WriteAheadLog.Abstractions.csproj" />
+  </ItemGroup>
 
 </Project>

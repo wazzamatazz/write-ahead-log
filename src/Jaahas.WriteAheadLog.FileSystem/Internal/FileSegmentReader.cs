@@ -271,11 +271,10 @@ internal sealed partial class FileSegmentReader : SegmentReader {
                     _file.Refresh();
                     
                     if (!_file.Exists || _file.IsReadOnly) {
+                        ChangesDetected.Set();
                         break;
                     }
                     
-                    //System.Diagnostics.Debug.WriteLine($"File '{_file.FullName}' length: {_file.Length}");
-
                     if (_file.Length == length) {
                         continue;
                     }

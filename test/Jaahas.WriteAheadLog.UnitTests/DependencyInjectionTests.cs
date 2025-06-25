@@ -26,30 +26,16 @@ public class DependencyInjectionTests {
             Directory.Delete(s_tempPath, true);
         }
     }
-
-
-    [TestMethod]
-    public async Task ShouldRegisterDefaultWriteAheadLog() {
-        var builder = Host.CreateApplicationBuilder();
-        builder.Services.AddFileWriteAheadLog(options => {
-            options.DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!);
-        });
-        
-        using var app = builder.Build();
-        
-        var log = app.Services.GetRequiredService<IWriteAheadLog>();
-        await log.InitAsync(TestContext.CancellationTokenSource.Token);
-
-        await log.WriteAsync(Enumerable.Repeat((byte) 1, 100).ToArray(), TestContext.CancellationTokenSource.Token);
-    }
     
 
     [TestMethod]
-    public async Task ShouldRegisterNamedWriteAheadLog() {
+    public async Task ShouldRegisterWriteAheadLog() {
         var builder = Host.CreateApplicationBuilder();
-        builder.Services.AddFileWriteAheadLog(TestContext.TestName!, options => {
-            options.DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!);
-        });
+        builder.Services
+            .AddWriteAheadLogServices()
+            .AddFileWriteAheadLog(TestContext.TestName!, options => {
+                options.DataDirectory = Path.Combine(s_tempPath, TestContext.TestName!);
+            });
         
         using var app = builder.Build();
         

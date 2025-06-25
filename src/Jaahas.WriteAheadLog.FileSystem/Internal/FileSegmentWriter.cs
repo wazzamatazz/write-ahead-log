@@ -123,7 +123,7 @@ internal sealed partial class FileSegmentWriter : SegmentWriter {
 
     /// <inheritdoc />
     protected override async ValueTask<long> WriteMessageCoreAsync(ReadOnlySequence<byte> message, ulong sequenceId, long timestamp) {
-        var bytesWritten = LogEntry.Write(
+        var bytesWritten = FileWriteAheadLogUtilities.WriteLogEntryToBuffer(
             _fileStreamWriter, 
             sequenceId, 
             timestamp, 
@@ -149,11 +149,16 @@ internal sealed partial class FileSegmentWriter : SegmentWriter {
 
 
     private async Task BackgroundFlushAsync(TimeSpan interval, CancellationToken cancellationToken) {
-        try {
-            await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
-            await FlushAsync(cancellationToken).ConfigureAwait(false);
+        while (!cancellationToken.IsCancellationRequested) {
+            try {
+                await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
+                await FlushAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
+            catch (Exception e) {
+                LogBackgroundFlushFaulted(e);
+            }
         }
-        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested) { }
     }
     
     
@@ -233,5 +238,8 @@ internal sealed partial class FileSegmentWriter : SegmentWriter {
     
     [LoggerMessage(103, LogLevel.Information, "Closing segment and setting read-only attribute: {filePath}")]
     partial void LogClosingSegment(string filePath);
+    
+    [LoggerMessage(104, LogLevel.Error, "Error in background flush loop.")]
+    partial void LogBackgroundFlushFaulted(Exception exception);
 
 }

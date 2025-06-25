@@ -5,7 +5,7 @@ using Microsoft.Extensions.Logging;
 namespace Jaahas.WriteAheadLog.DependencyInjection.Internal;
 
 /// <summary>
-/// Initialises all <see cref="FileWriteAheadLog"/> instances registered with the service provider.
+/// Initialises all <see cref="IWriteAheadLog"/> instances registered with the service provider.
 /// </summary>
 internal sealed partial class LogInitService : BackgroundService {
     
@@ -22,26 +22,25 @@ internal sealed partial class LogInitService : BackgroundService {
     
     /// <inheritdoc />
     protected override async Task ExecuteAsync(CancellationToken stoppingToken) {
-        var registrations = _provider.GetServices<KeyedLogRegistration>();
+        var logs = _provider.GetServices<IWriteAheadLog>();
 
-        foreach (var registration in registrations) {
+        foreach (var log in logs) {
             if (stoppingToken.IsCancellationRequested) {
                 break;
             }
             
-            var log = _provider.GetKeyedService<IWriteAheadLog>(registration.Key);
             if (log is null) {
                 continue;
             }
 
             try {
-                LogInitialisingInstance(registration.Key);
+                LogInitialisingInstance(null!);
                 await log.InitAsync(stoppingToken).ConfigureAwait(false);
-                LogInitialisedInstance(registration.Key);
+                LogInitialisedInstance(null!);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested) { }
             catch (Exception e) {
-                LogFailedToInitialiseInstance(registration.Key, e);
+                LogFailedToInitialiseInstance(null!, e);
             }
         }
     }

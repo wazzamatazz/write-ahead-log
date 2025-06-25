@@ -61,7 +61,7 @@ internal abstract class SegmentReader {
                     continue;
                 }
 
-                while (LogEntry.TryRead(ref buffer, out var entry)) {
+                while (FileWriteAheadLogUtilities.TryReadLogEntry(ref buffer, out var entry)) {
                     yield return entry;
                 }
 

@@ -21,7 +21,10 @@ public sealed partial class WriteAheadLogService : WriteAheadLog.Grpc.WriteAhead
 
 
     /// <inheritdoc />
-    public override Task<GetLogsResponse> List(GetLogsRequest request, ServerCallContext context) => base.List(request, context);
+    public override Task<GetLogsResponse> List(GetLogsRequest request, ServerCallContext context) {
+        var response = new GetLogsResponse();
+        return Task.FromResult(response);
+    }
 
 
     /// <inheritdoc />
@@ -52,7 +55,47 @@ public sealed partial class WriteAheadLogService : WriteAheadLog.Grpc.WriteAhead
 
 
     /// <inheritdoc />
-    public override async Task Read(ReadFromLogRequest request, IServerStreamWriter<LogEntry> responseStream, ServerCallContext context) {
+    public override async Task WriteStream(IAsyncStreamReader<WriteToLogRequest> requestStream, IServerStreamWriter<LogEntryPosition> responseStream, ServerCallContext context) {
+        string? previousLogName = null;
+        IWriteAheadLog? previousLog = null;
+        
+        await foreach (var request in requestStream.ReadAllAsync(context.CancellationToken).ConfigureAwait(false)) {
+            var logName = string.IsNullOrEmpty(request.LogName) 
+                ? string.Empty 
+                : request.LogName;
+            
+            var log = logName.Equals(previousLogName, StringComparison.Ordinal)
+                ? previousLog
+                : _serviceProvider.GetKeyedService<IWriteAheadLog>(logName);
+
+            if (log is null) {
+                throw new RpcException(new Status(StatusCode.NotFound, "Log not found."));
+            }
+
+            if (log != previousLog) {
+                previousLog = log;
+                previousLogName = logName;
+            }
+
+            if (_logger.IsEnabled(LogLevel.Trace)) {
+                var peerIdentity = context.AuthContext.IsPeerAuthenticated
+                    ? string.Join(',', context.AuthContext.PeerIdentity.Select(x => x.Value))
+                    : string.Empty;
+                LogWriteToLogRequest(logName, context.AuthContext.IsPeerAuthenticated, peerIdentity, request.Data.Length);
+            }
+
+            var result = await log.WriteAsync(request.Data.Memory, context.CancellationToken).ConfigureAwait(false);
+
+            await responseStream.WriteAsync(new LogEntryPosition() {
+                SequenceId = result.SequenceId,
+                Timestamp = result.Timestamp
+            }, context.CancellationToken).ConfigureAwait(false);
+        }
+    }
+
+
+    /// <inheritdoc />
+    public override async Task ReadStream(ReadFromLogRequest request, IServerStreamWriter<LogEntry> responseStream, ServerCallContext context) {
         var log = string.IsNullOrEmpty(request.LogName)
             ? _serviceProvider.GetKeyedService<IWriteAheadLog>(string.Empty)
             : _serviceProvider.GetKeyedService<IWriteAheadLog>(request.LogName);
@@ -79,7 +122,10 @@ public sealed partial class WriteAheadLogService : WriteAheadLog.Grpc.WriteAhead
                         Position = new LogEntryPosition() {
                             SequenceId = entry.SequenceId, 
                             Timestamp = entry.Timestamp
-                        }, Data = ByteString.CopyFrom(entry.Data)
+                        }, 
+                        // Use the entry payload directly without copying. This prevents a byte[]
+                        // allocation under the hood.
+                        Data = UnsafeByteOperations.UnsafeWrap(entry.Data)
                     }).ConfigureAwait(false);
                 }
                 finally {

@@ -8,11 +8,14 @@ package jaahas.writeaheadlog.grpc;
 service WriteAheadLogService {
   // Lists available write-ahead logs on the server.
   rpc List (GetLogsRequest) returns (GetLogsResponse);
-  // Writes a log entry.
+  // Writes a single log entry.
   rpc Write (WriteToLogRequest) returns (LogEntryPosition);
-  // Reads log entries.
-  rpc Read (ReadFromLogRequest) returns (stream LogEntry);
+  // Writes a stream of log entries.
+  rpc WriteStream (stream WriteToLogRequest) returns (stream LogEntryPosition);
+  // Reads a stream of log entries.
+  rpc ReadStream (ReadFromLogRequest) returns (stream LogEntry);
 }
+
 
 // Describes the position of an entry in a write-ahead log.
 message LogEntryPosition {

@@ -16,25 +16,7 @@ namespace Jaahas.WriteAheadLog.FileSystem;
 /// log for storing messages.
 /// </summary>
 /// <remarks>
-///
-/// <para>
-///   Incoming messages are defined using read-only byte sequences. Use the <see cref="WriteAsync"/>
-///   method or an extension method overload defined in <see cref="WriteAheadLogExtensions"/> to write
-///   messages to the log. 
-/// </para>
-///
-/// <para>
-///   You can also use the <see cref="LogWriter"/> class in scenarios where it is preferable to
-///   write log message payloads using an <see cref="IBufferWriter{T}"/> (for example, when
-///   serializing data to JSON using <see cref="System.Text.Json.JsonSerializer"/>).
-/// </para>
-///
-/// <para>
-///   Messages written to the log are written to the current writable segment and assigned a
-///   sequence ID and timestamp. You can read messages from the log using the <see cref="ReadAsync"/>
-///   method or an extension method defined in <see cref="WriteAheadLogExtensions"/>.
-/// </para>
-///
+/// 
 /// <para>
 ///   The log supports automatic segment rollover based on segment size, message count, and/or
 ///   time. Old segments can be automatically cleaned up after a retention period or when the
@@ -218,20 +200,6 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
         using var handle = await _writeLock.LockAsync(cts.Token).ConfigureAwait(false);
         
         return await WriteCoreAsync(data, cts.Token).ConfigureAwait(false);
-    }
-    
-    
-    public async IAsyncEnumerable<WriteResult> WriteAsync(IAsyncEnumerable<ReadOnlySequence<byte>> data, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);
-        await InitCoreAsync(cts.Token).ConfigureAwait(false);
-        
-        await foreach (var item in data.WithCancellation(cts.Token).ConfigureAwait(false)) {
-            using var handle = await _writeLock.LockAsync(cts.Token).ConfigureAwait(false);
-            var result = await WriteCoreAsync(item, cts.Token).ConfigureAwait(false);
-            yield return result;
-        }
     }
     
 

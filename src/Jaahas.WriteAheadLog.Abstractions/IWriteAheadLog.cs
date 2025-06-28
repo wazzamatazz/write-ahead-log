@@ -2,6 +2,9 @@ using System.Buffers;
 
 namespace Jaahas.WriteAheadLog;
 
+/// <summary>
+/// <see cref="IWriteAheadLog"/> is a contract for a Write-Ahead Log (WAL) implementation.
+/// </summary>
 public interface IWriteAheadLog : IAsyncDisposable {
 
     /// <summary>
@@ -30,22 +33,6 @@ public interface IWriteAheadLog : IAsyncDisposable {
     /// </returns>
     ValueTask<WriteResult> WriteAsync(ReadOnlySequence<byte> data, CancellationToken cancellationToken = default);
     
-    
-    /// <summary>
-    /// Writes multiple log entries asynchronously.
-    /// </summary>
-    /// <param name="data">
-    ///   A stream of <see cref="ReadOnlySequence{T}"/> instances containing the log entry data.
-    /// </param>
-    /// <param name="cancellationToken">
-    ///   The cancellation token for the operation.
-    /// </param>
-    /// <returns>
-    ///   A stream of <see cref="WriteResult"/> objects, each containing the sequence ID and
-    ///   timestamp of the written entry.
-    /// </returns>
-    IAsyncEnumerable<WriteResult> WriteAsync(IAsyncEnumerable<ReadOnlySequence<byte>> data, CancellationToken cancellationToken = default);
-
 
     /// <summary>
     /// Reads entries from the log.

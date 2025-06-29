@@ -99,10 +99,10 @@ The `JsonLogWriter` class uses `LogWriter` internally and as such, it also requi
 
 # Reading Log Entries
 
-The `ReadAllAsync` method is used to read entries from the log. It returns an `IAsyncEnumerable<LogEntry>` that can be iterated over to process each log entry:
+The `ReadAsync` method is used to read entries from the log. It returns an `IAsyncEnumerable<LogEntry>` that can be iterated over to process each log entry:
 
 ```csharp
-await foreach (var entry in log.ReadAllAsync()) {
+await foreach (var entry in log.ReadAsync()) {
     // Process each log entry.
     Console.WriteLine($"Sequence ID: {entry.SequenceId}, Timestamp: {entry.Timestamp}, Data Length: {entry.Data.Length}");
     // Dispose of the entry after use.
@@ -113,17 +113,17 @@ await foreach (var entry in log.ReadAllAsync()) {
 > [!IMPORTANT]
 > Dispose of the `LogEntry` instances after use to release shared resources!
 
-By default, the `IAsyncEnumerable<LogEntry>` returned by `ReadAllAsync` will complete once it reaches the end of the log. If you want to read entries continuously as they are written, you can pass a `LogReadOptions` instance to the `ReadFromAsync` method that specifies to watch for changes. See below for more details.
+By default, the `IAsyncEnumerable<LogEntry>` returned by `ReadAsync` will complete once it reaches the end of the log. If you want to read entries continuously as they are written, you can pass a `LogReadOptions` instance to the `ReadAsync` method that specifies to watch for changes. See below for more details.
 
 
 ## Specifying Read Options
 
-You can optionally specify a `LogReadOptions` instance when calling the `ReadFromAsync` method. This allows you to perform operations such as specifying a starting sequence ID or timestamp, and limiting the number of entries to read:
+You can optionally specify a `LogReadOptions` instance when calling the `ReadAsync` method. This allows you to perform operations such as specifying a starting sequence ID or timestamp, and limiting the number of entries to read:
 
 ```csharp
 var readOptions = new LogReadOptions(SequenceId: 5678, Limit: 100);
 
-await foreach (var entry in log.ReadAllAsync(readOptions)) {
+await foreach (var entry in log.ReadAsync(readOptions)) {
     // Process each log entry.
     Console.WriteLine($"Sequence ID: {entry.SequenceId}, Timestamp: {entry.Timestamp}, Data Length: {entry.Data.Length}");
     // Dispose of the entry after use.
@@ -139,7 +139,7 @@ You can also watch for changes in the log by passing a `LogReadOptions` instance
 ```csharp
 var readOptions = new LogReadOptions(Timestamp: 638861024271000320, WatchForChanges: true);
 
-await foreach (var entry in log.ReadAllAsync(readOptions)) {
+await foreach (var entry in log.ReadAsync(readOptions)) {
     // Process each log entry.
     Console.WriteLine($"Sequence ID: {entry.SequenceId}, Timestamp: {entry.Timestamp}, Data Length: {entry.Data.Length}");
     // Dispose of the entry after use.

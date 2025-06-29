@@ -37,7 +37,8 @@ You can then resolve a specific log in one of the following ways:
 var log1 = serviceProvider.GetRequiredKeyedService<IWriteAheadLog>("file-1");
 
 // 2. Use the WriteAheadLogFactory service to retrieve a log by name:
-var log2 = serviceProvider.GetRequiredService<WriteAheadLogFactory>().GetWriteAheadLog("file-2");
+var log2 = serviceProvider.GetRequiredService<WriteAheadLogFactory>()
+    .GetWriteAheadLog("file-2");
 ```
 
 

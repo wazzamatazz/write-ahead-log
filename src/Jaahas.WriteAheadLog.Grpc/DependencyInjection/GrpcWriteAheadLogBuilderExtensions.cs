@@ -22,7 +22,9 @@ public static class GrpcWriteAheadLogBuilderExtensions {
         
         return builder.AddLog<GrpcWriteAheadLog>(
             name, 
-            (provider, _) => ActivatorUtilities.CreateInstance<GrpcWriteAheadLog>(provider, provider.GetRequiredService<IOptionsMonitor<GrpcWriteAheadLogOptions>>().Get(name)));
+            provider => ActivatorUtilities.CreateInstance<GrpcWriteAheadLog>(
+                provider, 
+                provider.GetRequiredService<IOptionsMonitor<GrpcWriteAheadLogOptions>>().Get(name)));
     }
 
 }

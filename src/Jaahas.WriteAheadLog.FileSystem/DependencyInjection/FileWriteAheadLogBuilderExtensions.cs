@@ -56,7 +56,11 @@ public static class FileWriteAheadLogBuilderExtensions {
         builder.Services.AddOptions<FileWriteAheadLogOptions>(name)
             .Configure(configure);
         
-        return builder.AddLog<FileWriteAheadLog>(name, (provider, key) => ActivatorUtilities.CreateInstance<FileWriteAheadLog>(provider, provider.GetRequiredService<IOptionsMonitor<FileWriteAheadLogOptions>>().Get(key)));
+        return builder.AddLog<FileWriteAheadLog>(
+            name, 
+            provider => ActivatorUtilities.CreateInstance<FileWriteAheadLog>(
+                provider, 
+                provider.GetRequiredService<IOptionsMonitor<FileWriteAheadLogOptions>>().Get(name)));
     }
 
 }

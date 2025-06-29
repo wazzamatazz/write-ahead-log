@@ -1,21 +1,28 @@
 using Jaahas.WriteAheadLog.DependencyInjection.Internal;
 
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 
 namespace Jaahas.WriteAheadLog.DependencyInjection;
 
+/// <summary>
+/// Extensions for <see cref="IServiceCollection"/>.
+/// </summary>
 public static class ServiceCollectionExtensions {
 
+    /// <summary>
+    /// Adds Write-Ahead Log services to the <see cref="IServiceCollection"/>.
+    /// </summary>
+    /// <param name="services">
+    ///   The <see cref="IServiceCollection"/>.
+    /// </param>
+    /// <returns>
+    ///   An <see cref="IWriteAheadLogBuilder"/> that is used for further configuration of
+    ///   Write-Ahead Log services.
+    /// </returns>
     public static IWriteAheadLogBuilder AddWriteAheadLogServices(this IServiceCollection services) {
         ArgumentNullException.ThrowIfNull(services);
         
-        services.TryAddSingleton(TimeProvider.System);
-        services.AddHostedService<LogInitService>();
-        
-        return new WriteAheadLogBuilder(services);
-        
-        
+        return new WriteAheadLogBuilder(services).AddCoreServices();
     }
 
 }

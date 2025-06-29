@@ -13,7 +13,11 @@ services.AddWriteAheadLogServices().AddFile(options => {
 });
 ```
 
-This registers a singleton `IWriteAheadLog` service with the specified data directory and default values for other settings. The `IWriteAheadLog` service can then be injected into your application components.
+This registers a singleton `IWriteAheadLog` service with the specified data directory and default values for other settings. The `IWriteAheadLog` service can then be injected into your application components:
+
+```csharp
+var log = serviceProvider.GetRequiredService<IWriteAheadLog>();
+```
 
 
 # Registering Multiple Logs

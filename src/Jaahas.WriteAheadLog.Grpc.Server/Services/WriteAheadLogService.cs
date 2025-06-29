@@ -2,7 +2,8 @@ using Google.Protobuf;
 
 using Grpc.Core;
 
-using Microsoft.Extensions.DependencyInjection;
+using Jaahas.WriteAheadLog.DependencyInjection;
+
 using Microsoft.Extensions.Logging;
 
 namespace Jaahas.WriteAheadLog.Grpc.Services;
@@ -11,11 +12,11 @@ public sealed partial class WriteAheadLogService : WriteAheadLog.Grpc.WriteAhead
 
     private readonly ILogger<WriteAheadLogService> _logger;
     
-    private readonly IServiceProvider _serviceProvider;
+    private readonly WriteAheadLogFactory _walFactory;
 
 
-    public WriteAheadLogService(IServiceProvider serviceProvider, ILogger<WriteAheadLogService>? logger) {
-        _serviceProvider = serviceProvider ?? throw new ArgumentNullException(nameof(serviceProvider));
+    public WriteAheadLogService(WriteAheadLogFactory walFactory, ILogger<WriteAheadLogService>? logger) {
+        _walFactory = walFactory ?? throw new ArgumentNullException(nameof(walFactory));
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<WriteAheadLogService>.Instance;
     }
 
@@ -23,6 +24,14 @@ public sealed partial class WriteAheadLogService : WriteAheadLog.Grpc.WriteAhead
     /// <inheritdoc />
     public override Task<GetLogsResponse> List(GetLogsRequest request, ServerCallContext context) {
         var response = new GetLogsResponse();
+
+        foreach (var name in _walFactory.GetNames()) {
+            response.Logs.Add(new LogDescriptor() {
+                LogName = name
+                // TODO: other properties             
+            });
+        }
+        
         return Task.FromResult(response);
     }
 
@@ -32,7 +41,7 @@ public sealed partial class WriteAheadLogService : WriteAheadLog.Grpc.WriteAhead
         var logName = string.IsNullOrEmpty(request.LogName) 
             ? string.Empty 
             : request.LogName;
-        var log = _serviceProvider.GetKeyedService<IWriteAheadLog>(logName);
+        var log = _walFactory.GetWriteAheadLog(logName);
 
         if (log is null) {
             throw new RpcException(new Status(StatusCode.NotFound, "Log not found."));
@@ -66,7 +75,7 @@ public sealed partial class WriteAheadLogService : WriteAheadLog.Grpc.WriteAhead
             
             var log = logName.Equals(previousLogName, StringComparison.Ordinal)
                 ? previousLog
-                : _serviceProvider.GetKeyedService<IWriteAheadLog>(logName);
+                : _walFactory.GetWriteAheadLog(logName);
 
             if (log is null) {
                 throw new RpcException(new Status(StatusCode.NotFound, "Log not found."));
@@ -97,8 +106,8 @@ public sealed partial class WriteAheadLogService : WriteAheadLog.Grpc.WriteAhead
     /// <inheritdoc />
     public override async Task ReadStream(ReadFromLogRequest request, IServerStreamWriter<LogEntry> responseStream, ServerCallContext context) {
         var log = string.IsNullOrEmpty(request.LogName)
-            ? _serviceProvider.GetKeyedService<IWriteAheadLog>(string.Empty)
-            : _serviceProvider.GetKeyedService<IWriteAheadLog>(request.LogName);
+            ? _walFactory.GetWriteAheadLog(string.Empty)
+            : _walFactory.GetWriteAheadLog(request.LogName);
 
         if (log is null) {
             throw new RpcException(new Status(StatusCode.NotFound, "Log not found."));

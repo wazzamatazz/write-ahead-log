@@ -8,12 +8,37 @@ A .NET library for writing to a file-based write-ahead log (WAL).
 You can register a file-based `IWriteAheadLog` service with your application's dependency injection container as follows:
 
 ```csharp
-services.AddFileWriteAheadLog(options => {
+services.AddWriteAheadLogServices().AddFile(options => {
     DataDirectory = "data/wal"
 });
 ```
 
-This registers the singleton `IWriteAheadLog` service with the specified data directory and default values for other settings. The `IWriteAheadLog` service can then be injected into your application components.
+This registers a singleton `IWriteAheadLog` service with the specified data directory and default values for other settings. The `IWriteAheadLog` service can then be injected into your application components.
+
+
+# Registering Multiple Logs
+
+You can register multiple named logs with different configurations as follows:
+
+```csharp
+services.AddWriteAheadLogServices()
+    .AddFile("file-1", options => {
+        DataDirectory = "data/wal-1"
+    })
+    .AddFile("file-2", options => {
+        DataDirectory = "data/wal-2"
+    });
+```
+
+You can then resolve a specific log in one of the following ways:
+
+```csharp
+// 1. Resolve a keyed IWriteAheadLog service by name:
+var log1 = serviceProvider.GetRequiredKeyedService<IWriteAheadLog>("file-1");
+
+// 2. Use the WriteAheadLogFactory service to retrieve a log by name:
+var log2 = serviceProvider.GetRequiredService<WriteAheadLogFactory>().GetWriteAheadLog("file-2");
+```
 
 
 # Writing Log Entries

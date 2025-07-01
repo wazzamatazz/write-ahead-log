@@ -203,7 +203,7 @@ public sealed partial class LogReader : IAsyncDisposable {
             var initialPosition = _currentPosition;
             var skipEntryAtInitialPosition = !_skipInitialPositionCheck && (initialPosition.SequenceId.HasValue || initialPosition.Timestamp.HasValue);
             
-            await foreach (var item in _log.ReadAllAsync(position: initialPosition, watchForChanges: true, cancellationToken: cancellationToken)) {
+            await foreach (var item in _log.ReadAsync(position: initialPosition, watchForChanges: true, cancellationToken: cancellationToken)) {
                 try {
                     if (skipEntryAtInitialPosition) {
                         skipEntryAtInitialPosition = false;

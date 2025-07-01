@@ -62,7 +62,7 @@ public class SparseIndexBenchmarks {
     
     [Benchmark]
     public async Task GetMessageUsingSparseIndex() {
-        await foreach (var item in _log.ReadAllAsync(position: SeekSequenceId, count: 1)) {
+        await foreach (var item in _log.ReadAsync(position: SeekSequenceId, limit: 1)) {
             item.Dispose();
             break;
         }

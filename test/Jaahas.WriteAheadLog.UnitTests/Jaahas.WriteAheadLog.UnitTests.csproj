@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk.Web">
 
     <PropertyGroup>
         <TargetFramework>net9.0</TargetFramework>
@@ -8,6 +8,7 @@
     </PropertyGroup>
 
     <ItemGroup>
+        <PackageReference Include="Microsoft.AspNetCore.TestHost" />
         <PackageReference Include="Microsoft.Extensions.Hosting" />
         <PackageReference Include="MSTest"/>
     </ItemGroup>
@@ -18,6 +19,8 @@
 
     <ItemGroup>
       <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.FileSystem\Jaahas.WriteAheadLog.FileSystem.csproj" />
+      <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.Grpc\Jaahas.WriteAheadLog.Grpc.csproj" Aliases="grpcclient" />
+      <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.Grpc.Server\Jaahas.WriteAheadLog.Grpc.Server.csproj" Aliases="grpcserver" />
     </ItemGroup>
 
 </Project>

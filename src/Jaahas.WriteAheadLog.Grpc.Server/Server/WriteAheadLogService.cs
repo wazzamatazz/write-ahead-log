@@ -6,9 +6,9 @@ using Jaahas.WriteAheadLog.DependencyInjection;
 
 using Microsoft.Extensions.Logging;
 
-namespace Jaahas.WriteAheadLog.Grpc.Services;
+namespace Jaahas.WriteAheadLog.Grpc.Server;
 
-public sealed partial class WriteAheadLogService : WriteAheadLog.Grpc.WriteAheadLogService.WriteAheadLogServiceBase {
+public sealed partial class WriteAheadLogService : WriteAheadLog.WriteAheadLogBase {
 
     private readonly ILogger<WriteAheadLogService> _logger;
     

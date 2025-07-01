@@ -39,7 +39,7 @@ public static class WriteAheadLogExtensions {
     /// <param name="position">
     ///   The position to start reading from.
     /// </param>
-    /// <param name="count">
+    /// <param name="limit">
     ///   The maximum number of entries to read. Specify less than 1 for no limit.
     /// </param>
     /// <param name="watchForChanges">
@@ -53,9 +53,9 @@ public static class WriteAheadLogExtensions {
     /// <returns>
     ///   An asynchronous sequence of <see cref="LogEntry"/> instances read from the log.
     /// </returns>
-    public static async IAsyncEnumerable<LogEntry> ReadAllAsync(this IWriteAheadLog log, LogPosition position = default, long count = -1, bool watchForChanges = false, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
+    public static async IAsyncEnumerable<LogEntry> ReadAsync(this IWriteAheadLog log, LogPosition position = default, long limit = -1, bool watchForChanges = false, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
         ArgumentNullException.ThrowIfNull(log);
-        await foreach (var entry in log.ReadAsync(new LogReadOptions(Position: position, Limit: count, WatchForChanges: watchForChanges), cancellationToken).ConfigureAwait(false)) {
+        await foreach (var entry in log.ReadAsync(new LogReadOptions(Position: position, Limit: limit, WatchForChanges: watchForChanges), cancellationToken).ConfigureAwait(false)) {
             yield return entry;
         }
     }

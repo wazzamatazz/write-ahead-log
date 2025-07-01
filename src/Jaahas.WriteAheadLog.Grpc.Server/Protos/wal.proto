@@ -5,7 +5,7 @@ option csharp_namespace = "Jaahas.WriteAheadLog.Grpc";
 package jaahas.writeaheadlog.grpc;
 
 // The WAL service definition.
-service WriteAheadLogService {
+service WriteAheadLog {
   // Lists available write-ahead logs on the server.
   rpc List (GetLogsRequest) returns (GetLogsResponse);
   // Writes a single log entry.

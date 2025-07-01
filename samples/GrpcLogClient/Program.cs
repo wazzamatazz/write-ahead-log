@@ -7,7 +7,7 @@ using Jaahas.WriteAheadLog.Grpc;
 var builder = Host.CreateApplicationBuilder(args);
 builder.Services.AddHostedService<Worker>();
 
-builder.Services.AddGrpcClient<WriteAheadLogService.WriteAheadLogServiceClient>(options => {
+builder.Services.AddGrpcClient<WriteAheadLog.WriteAheadLogClient>(options => {
     options.Address = new Uri("https://localhost:7047");
     options.ChannelOptionsActions.Add(channel => {
         channel.MaxReconnectBackoff = TimeSpan.FromSeconds(30);

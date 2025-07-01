@@ -17,7 +17,7 @@ public sealed class GrpcWriteAheadLog : IWriteAheadLog {
 
     private bool _disposed;
     
-    private readonly WriteAheadLogService.WriteAheadLogServiceClient _client;
+    private readonly WriteAheadLog.WriteAheadLogClient _client;
     
     private readonly GrpcWriteAheadLogOptions _options;
     
@@ -44,7 +44,7 @@ public sealed class GrpcWriteAheadLog : IWriteAheadLog {
     /// <exception cref="ArgumentNullException">
     ///   <paramref name="client"/> is <see langword="null"/>.
     /// </exception>
-    public GrpcWriteAheadLog(WriteAheadLogService.WriteAheadLogServiceClient client, GrpcWriteAheadLogOptions? options = null) {
+    public GrpcWriteAheadLog(WriteAheadLog.WriteAheadLogClient client, GrpcWriteAheadLogOptions? options = null) {
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _options = options ?? new GrpcWriteAheadLogOptions();
     }
@@ -171,7 +171,7 @@ public sealed class GrpcWriteAheadLog : IWriteAheadLog {
     
 
     /// <inheritdoc />
-    public async IAsyncEnumerable<WriteAheadLog.LogEntry> ReadAsync(LogReadOptions options, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
+    public async IAsyncEnumerable<Jaahas.WriteAheadLog.LogEntry> ReadAsync(LogReadOptions options, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
         
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(_disposedTokenSource.Token, cancellationToken);
@@ -200,7 +200,7 @@ public sealed class GrpcWriteAheadLog : IWriteAheadLog {
         var stream = _client.ReadStream(request, cancellationToken: cts.Token);
 
         await foreach (var item in stream.ResponseStream.ReadAllAsync(cts.Token).ConfigureAwait(false)) {
-            yield return WriteAheadLog.LogEntry.Create(item.Position.SequenceId, item.Position.Timestamp, item.Data.Span);
+            yield return Jaahas.WriteAheadLog.LogEntry.Create(item.Position.SequenceId, item.Position.Timestamp, item.Data.Span);
         }
     }
 

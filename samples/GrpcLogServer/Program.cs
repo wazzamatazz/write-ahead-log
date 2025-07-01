@@ -1,7 +1,7 @@
 using GrpcLogServer;
 
 using Jaahas.WriteAheadLog.DependencyInjection;
-using Jaahas.WriteAheadLog.Grpc.Services;
+using Jaahas.WriteAheadLog.Grpc.Server;
 
 var builder = WebApplication.CreateBuilder(args);
 

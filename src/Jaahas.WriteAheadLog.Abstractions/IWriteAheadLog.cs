@@ -6,6 +6,12 @@ namespace Jaahas.WriteAheadLog;
 /// <see cref="IWriteAheadLog"/> is a contract for a Write-Ahead Log (WAL) implementation.
 /// </summary>
 public interface IWriteAheadLog : IAsyncDisposable {
+    
+    /// <summary>
+    /// The descriptor for the log, providing metadata about the log's configuration and capabilities.
+    /// </summary>
+    WriteAheadLogMetadata Metadata { get; }
+    
 
     /// <summary>
     /// Initializes the log.

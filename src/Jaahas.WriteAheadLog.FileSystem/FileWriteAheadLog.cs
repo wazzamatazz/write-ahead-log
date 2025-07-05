@@ -24,7 +24,7 @@ namespace Jaahas.WriteAheadLog.FileSystem;
 /// </para>
 /// 
 /// </remarks>
-public sealed partial class FileWriteAheadLog : IWriteAheadLog {
+public sealed partial class FileWriteAheadLog : WriteAheadLog<FileWriteAheadLogOptions> {
     
     /// <summary>
     /// Specifies whether the log has been disposed.
@@ -42,30 +42,9 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
     private readonly ILoggerFactory _loggerFactory;
     
     /// <summary>
-    /// A cancellation token source that is used to signal when the log has been disposed.
-    /// </summary>
-    private readonly CancellationTokenSource _disposedTokenSource = new CancellationTokenSource();
-
-    /// <summary>
-    /// Specifies whether the log has been initialised.
-    /// </summary>
-    private bool _initialised;
-    
-    /// <summary>
-    /// Lock to ensure that only one initialization operation can occur at a time.
-    /// </summary>
-    private readonly Nito.AsyncEx.AsyncAutoResetEvent _initLock = new Nito.AsyncEx.AsyncAutoResetEvent(true);
-    
-    /// <summary>
     /// The time provider used to obtain the timestamp for log entries.
     /// </summary>
     private readonly TimeProvider _timeProvider;
-    
-    /// <summary>
-    /// The options for configuring the log's behavior, such as data directory, segment size, and
-    /// flush interval.
-    /// </summary>
-    private readonly FileWriteAheadLogOptions _options;
     
     /// <summary>
     /// The directory where the log data is stored.
@@ -101,11 +80,6 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
     /// Lock for synchronizing access to the segment indices.
     /// </summary>
     private readonly Nito.AsyncEx.AsyncReaderWriterLock _segmentIndicesLock = new Nito.AsyncEx.AsyncReaderWriterLock();
-
-    /// <summary>
-    /// Write lock to ensure that only one write operation can occur at a time.
-    /// </summary>
-    private readonly Nito.AsyncEx.AsyncLock _writeLock = new Nito.AsyncEx.AsyncLock();
     
     /// <summary>
     /// In-progress read operations that are currently reading from the log.
@@ -136,8 +110,11 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
     /// <exception cref="ArgumentNullException">
     ///   <paramref name="options"/> is <see langword="null"/>.
     /// </exception>
-    public FileWriteAheadLog(FileWriteAheadLogOptions options, TimeProvider? timeProvider = null, ILogger<FileWriteAheadLog>? logger = null, ILoggerFactory? loggerFactory = null) {
-        _options = options ?? throw new ArgumentNullException(nameof(options));
+    public FileWriteAheadLog(FileWriteAheadLogOptions options, TimeProvider? timeProvider = null, ILogger<FileWriteAheadLog>? logger = null, ILoggerFactory? loggerFactory = null)
+        : base(options) {
+        if (options == null) {
+            throw new ArgumentNullException(nameof(options));
+        }
         _timeProvider = timeProvider ?? TimeProvider.System;
         _loggerFactory = loggerFactory ?? Microsoft.Extensions.Logging.Abstractions.NullLoggerFactory.Instance;
         _logger = logger ?? _loggerFactory.CreateLogger<FileWriteAheadLog>();
@@ -146,15 +123,6 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
             ? "wal" 
             : options.DataDirectory;
         _dataDirectory = new DirectoryInfo(Path.IsPathRooted(dataDir) ? dataDir : Path.Combine(AppContext.BaseDirectory, dataDir));
-    }
-    
-    
-    /// <inheritdoc/>
-    public async ValueTask InitAsync(CancellationToken cancellationToken = default) {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);
-        await InitCoreAsync(cts.Token).ConfigureAwait(false);
     }
     
     
@@ -174,8 +142,8 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
     public async ValueTask<IReadOnlyList<SegmentHeader>> GetSegmentsAsync(CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
         
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);
-        await InitCoreAsync(cts.Token).ConfigureAwait(false);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, LifecycleToken);
+        await EnsureInitializedAsync(cts.Token).ConfigureAwait(false);
         
         using var handle = await _segmentIndicesLock.ReaderLockAsync(cts.Token).ConfigureAwait(false);
         
@@ -188,19 +156,6 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
         
         return builder.ToImmutable();
     } 
-    
-    
-    /// <inheritdoc/>
-    public async ValueTask<WriteResult> WriteAsync(ReadOnlySequence<byte> data, CancellationToken cancellationToken = default) {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);
-        await InitCoreAsync(cts.Token).ConfigureAwait(false);
-        
-        using var handle = await _writeLock.LockAsync(cts.Token).ConfigureAwait(false);
-        
-        return await WriteCoreAsync(data, cts.Token).ConfigureAwait(false);
-    }
     
 
     /// <summary>
@@ -215,14 +170,14 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
     public async ValueTask FlushAsync(CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        if (!_initialised) {
+        if (!Initialized) {
             return;
         }
         
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);
-        await InitCoreAsync(cts.Token).ConfigureAwait(false);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, LifecycleToken);
+        await EnsureInitializedAsync(cts.Token).ConfigureAwait(false);
         
-        using var handle = await _writeLock.LockAsync(cts.Token).ConfigureAwait(false);
+        using var handle = await WaitForWriteLockAsync(cts.Token).ConfigureAwait(false);
 
         if (_writer is null) {
             return;
@@ -244,10 +199,10 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
     public async ValueTask RolloverAsync(CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);
-        await InitCoreAsync(cts.Token).ConfigureAwait(false);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, LifecycleToken);
+        await EnsureInitializedAsync(cts.Token).ConfigureAwait(false);
         
-        using var handle = await _writeLock.LockAsync(cts.Token).ConfigureAwait(false);
+        using var handle = await WaitForWriteLockAsync(cts.Token).ConfigureAwait(false);
         await RolloverCoreAsync(RolloverReason.Manual, cts.Token).ConfigureAwait(false);
     }
 
@@ -276,16 +231,16 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
     public async ValueTask CleanupAsync(CancellationToken cancellationToken = default) {
         ObjectDisposedException.ThrowIf(_disposed, this);
         
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);
+        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, LifecycleToken);
         
-        using var handle = await _writeLock.LockAsync(cts.Token).ConfigureAwait(false);
+        using var handle = await WaitForWriteLockAsync(cts.Token).ConfigureAwait(false);
         LogCleanupRequested("manual");
         await CleanupCoreAsync(cts.Token).ConfigureAwait(false);
     }
     
     
     /// <inheritdoc/>
-    public async IAsyncEnumerable<LogEntry> ReadAsync(LogReadOptions options, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
+    protected override async IAsyncEnumerable<LogEntry> ReadCoreAsync(LogReadOptions options, [EnumeratorCancellation] CancellationToken cancellationToken) {
         ObjectDisposedException.ThrowIf(_disposed, this);
         
         var startingTimestamp = options.Position.Timestamp ?? -1;
@@ -303,10 +258,7 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
 
         ReadOperationStatus status;
         
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposedTokenSource.Token);
-        await InitCoreAsync(cts.Token).ConfigureAwait(false);
-
-        using (await _segmentIndicesLock.ReaderLockAsync(cts.Token).ConfigureAwait(false)) {
+        using (await _segmentIndicesLock.ReaderLockAsync(cancellationToken).ConfigureAwait(false)) {
             var segmentsToRead = new ConcurrentQueue<SegmentIndexWrapper>();
             
             foreach (var item in _readOnlySegmentIndices) {
@@ -353,13 +305,13 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
         try {
             var isFirstSegment = true;
 
-            while (!cts.IsCancellationRequested) {
+            while (!cancellationToken.IsCancellationRequested) {
                 if (!options.WatchForChanges && status.Segments.IsEmpty) {
                     // If we are not watching for changes and there are no segments to read, we can exit early.
                     yield break;
                 }
                 
-                await status.SegmentsAvailable.WaitAsync(cts.Token).ConfigureAwait(false);
+                await status.SegmentsAvailable.WaitAsync(cancellationToken).ConfigureAwait(false);
 
                 while (status.Segments.TryDequeue(out var index)) {
                     var offset = 0L;
@@ -418,7 +370,7 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
 
                     var watch = status.WatchForChanges && index.Index is MutableSegmentIndex;
                     long count = 0;
-                    await foreach (var item in new FileSegmentReader(_loggerFactory.CreateLogger<FileSegmentReader>()).ReadLogEntriesAsync(index.FilePath, offset, SeekOrigin.Begin, watch, _options.ReadPollingInterval, cts.Token).ConfigureAwait(false)) {
+                    await foreach (var item in new FileSegmentReader(_loggerFactory.CreateLogger<FileSegmentReader>()).ReadLogEntriesAsync(index.FilePath, offset, SeekOrigin.Begin, watch, Options.ReadPollingInterval, cancellationToken).ConfigureAwait(false)) {
                         if (startingTimestamp > 0) {
                             if (item.Timestamp < startingTimestamp) {
                                 // Skip entries that are before the requested timestamp.
@@ -454,91 +406,69 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
     private FileInfo[] GetSegmentFiles() => !_dataDirectory.Exists 
         ? [] 
         : _dataDirectory.GetFiles("*.wal", SearchOption.TopDirectoryOnly);
-    
-    
-    /// <summary>
-    /// Initialises the log if it has not already been initialised.
-    /// </summary>
-    /// <param name="cancellationToken">
-    ///   The cancellation token for the operation.
-    /// </param>
-    private async ValueTask InitCoreAsync(CancellationToken cancellationToken) {
-        if (_initialised) {
+
+
+    /// <inheritdoc/>
+    protected override async ValueTask InitCoreAsync(CancellationToken cancellationToken) {
+        using var segmentIndicesLockHandle = await _segmentIndicesLock.WriterLockAsync(cancellationToken).ConfigureAwait(false);
+
+        LogInitialising(_dataDirectory.FullName);
+        _dataDirectory.Create();
+
+        var files = GetSegmentFiles();
+        if (files.Length == 0) {
+            _lastSequenceId = 0;
+            MarkAsInitialised();
             return;
         }
-        
-        await _initLock.WaitAsync(cancellationToken).ConfigureAwait(false);
 
-        try {
-            if (_initialised) {
-                return;
-            }
-            
-            using var handle = await _writeLock.LockAsync(cancellationToken).ConfigureAwait(false);
-            using var segmentIndicesLockHandle = await _segmentIndicesLock.WriterLockAsync(cancellationToken).ConfigureAwait(false);
-            
-            LogInitialising(_dataDirectory.FullName);
-            _dataDirectory.Create();
+        // Move from newest to oldest segment files.
+        for (var i = files.Length - 1; i >= 0; i--) {
+            var file = files[i];
 
-            var files = GetSegmentFiles();
-            if (files.Length == 0) {
-                _lastSequenceId = 0;
-                MarkAsInitialised();
-                return;
+            if (!TryGetSegmentDetailsFromFileName(file, out var segmentName, out var originTime)) {
+                // The file does not match the expected naming convention.
+                continue;
             }
 
-            // Move from newest to oldest segment files.
-            for (var i = files.Length - 1; i >= 0; i--) {
-                var file = files[i];
+            LogCheckingSegment(file.FullName);
+            var header = FileSegmentReader.ReadHeader(file.FullName);
 
-                if (!TryGetSegmentDetailsFromFileName(file, out var segmentName, out var originTime)) {
-                    // The file does not match the expected naming convention.
-                    continue;
-                }
-
-                LogCheckingSegment(file.FullName);
-                var header = FileSegmentReader.ReadHeader(file.FullName);
-
-                if (header is null) {
-                    LogInvalidSegmentHeader(file.FullName);
-                    continue; // Skip invalid segment files
-                }
-
-                if (header.LastSequenceId > _lastSequenceId) {
-                    _lastSequenceId = header.LastSequenceId;
-                }
-
-                if (header.LastTimestamp > _lastTimestamp) {
-                    _lastTimestamp = header.LastTimestamp;
-                }
-
-                if (!header.ReadOnly) {
-                    // This is our writable segment.
-                    _writer ??= CreateFileSegmentWriter(
-                        segmentName,
-                        file.FullName,
-                        GetSegmentExpiryTime(originTime));
-                    _writerSegmentIndex = (MutableSegmentIndex) await BuildSegmentIndexAsync(header, file.FullName, cancellationToken).ConfigureAwait(false);
-                    LogSegmentLoaded(file.FullName, false, header.MessageCount, header.FirstSequenceId, header.LastSequenceId, header.FirstTimestamp, header.LastTimestamp);
-                    continue;
-                }
-
-                _readOnlySegmentIndices.Add(new SegmentIndexWrapper(file.FullName, await BuildSegmentIndexAsync(header, file.FullName, cancellationToken).ConfigureAwait(false)));
-                LogSegmentLoaded(file.FullName, true, header.MessageCount, header.FirstSequenceId, header.LastSequenceId, header.FirstTimestamp, header.LastTimestamp);
+            if (header is null) {
+                LogInvalidSegmentHeader(file.FullName);
+                continue; // Skip invalid segment files
             }
 
-            MarkAsInitialised();
+            if (header.LastSequenceId > _lastSequenceId) {
+                _lastSequenceId = header.LastSequenceId;
+            }
+
+            if (header.LastTimestamp > _lastTimestamp) {
+                _lastTimestamp = header.LastTimestamp;
+            }
+
+            if (!header.ReadOnly) {
+                // This is our writable segment.
+                _writer ??= CreateFileSegmentWriter(
+                    segmentName,
+                    file.FullName,
+                    GetSegmentExpiryTime(originTime));
+                _writerSegmentIndex = (MutableSegmentIndex) await BuildSegmentIndexAsync(header, file.FullName, cancellationToken).ConfigureAwait(false);
+                LogSegmentLoaded(file.FullName, false, header.MessageCount, header.FirstSequenceId, header.LastSequenceId, header.FirstTimestamp, header.LastTimestamp);
+                continue;
+            }
+
+            _readOnlySegmentIndices.Add(new SegmentIndexWrapper(file.FullName, await BuildSegmentIndexAsync(header, file.FullName, cancellationToken).ConfigureAwait(false)));
+            LogSegmentLoaded(file.FullName, true, header.MessageCount, header.FirstSequenceId, header.LastSequenceId, header.FirstTimestamp, header.LastTimestamp);
         }
-        finally {
-            _initLock.Set();
-        }
+
+        MarkAsInitialised();
 
         return;
-        
+
         void MarkAsInitialised() {
-            _initialised = true;
-            if (_options.SegmentCleanupInterval > TimeSpan.Zero) {
-                _ = RunCleanupLoopAsync(_options.SegmentCleanupInterval, _disposedTokenSource.Token);
+            if (Options.SegmentCleanupInterval > TimeSpan.Zero) {
+                _ = RunCleanupLoopAsync(Options.SegmentCleanupInterval, LifecycleToken);
             }
         }
     }
@@ -609,13 +539,13 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
     /// be used.
     /// </remarks>
     private DateTimeOffset? GetSegmentExpiryTime(DateTimeOffset originTime) {
-        if (_options.MaxSegmentTimeSpan <= TimeSpan.Zero) {
+        if (Options.MaxSegmentTimeSpan <= TimeSpan.Zero) {
             return null; // No expiry time set.
         }
 
         // Calculate the expiry time based on the origin time and the maximum segment time span.
-        return originTime.Add(_options.MaxSegmentTimeSpan >= TimeSpan.FromSeconds(1)
-            ? _options.MaxSegmentTimeSpan
+        return originTime.Add(Options.MaxSegmentTimeSpan >= TimeSpan.FromSeconds(1)
+            ? Options.MaxSegmentTimeSpan
             : TimeSpan.FromSeconds(1));
     }
     
@@ -626,8 +556,8 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
                 name,
                 filePath,
                 NotAfter: expiryTime, 
-                FlushInterval: _options.FlushInterval, 
-                FlushBatchSize: _options.FlushBatchSize), 
+                FlushInterval: Options.FlushInterval, 
+                FlushBatchSize: Options.FlushBatchSize), 
             _timeProvider,
             _loggerFactory.CreateLogger<FileSegmentWriter>());
     
@@ -660,7 +590,7 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
         await foreach (var item in new FileSegmentReader(_loggerFactory.CreateLogger<FileSegmentReader>()).ReadLogEntriesAsync(filePath, cancellationToken).ConfigureAwait(false)) {
             try {
                 ++itemCount;
-                if (_options.SparseIndexInterval > 0 && itemCount % _options.SparseIndexInterval == 0) {
+                if (Options.SparseIndexInterval > 0 && itemCount % Options.SparseIndexInterval == 0) {
                     var indexEntry = new MessageIndexEntry(item.SequenceId, item.Timestamp, offset);
                     entries.Add(indexEntry);
                 }
@@ -678,7 +608,7 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
     }
 
 
-    private async ValueTask<WriteResult> WriteCoreAsync(ReadOnlySequence<byte> data, CancellationToken cancellationToken) {
+    protected override async ValueTask<WriteResult> WriteCoreAsync(ReadOnlySequence<byte> data, CancellationToken cancellationToken) {
         // Check if we need to roll over to a new segment.
         var rolloverCheck = IsRolloverRequired(data.Length);
         if (rolloverCheck.Rollover) {
@@ -689,7 +619,7 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
         var bytesWritten = await _writer!.WriteAsync(data, ++_lastSequenceId, timestamp, cancellationToken).ConfigureAwait(false);
         _lastTimestamp = timestamp;
 
-        if (_options.SparseIndexInterval > 0 && _writer.Header.MessageCount % _options.SparseIndexInterval == 0) {
+        if (Options.SparseIndexInterval > 0 && _writer.Header.MessageCount % Options.SparseIndexInterval == 0) {
             // Add an index entry for this message.
             var entry = new MessageIndexEntry(_lastSequenceId, _lastTimestamp, _writer.Header.Size - bytesWritten);
             _writerSegmentIndex!.AddEntry(entry);
@@ -715,7 +645,7 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
             return (true, RolloverReason.NoWritableSegments); 
         }
         
-        if (_options.MaxSegmentSizeBytes > 0 && _writer.Header.Size + incomingMessageSize >= _options.MaxSegmentSizeBytes) {
+        if (Options.MaxSegmentSizeBytes > 0 && _writer.Header.Size + incomingMessageSize >= Options.MaxSegmentSizeBytes) {
             // The current segment has reached the maximum size.
             return (true, RolloverReason.SegmentSizeLimitReached);
         }
@@ -725,7 +655,7 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
             return (true, RolloverReason.SegmentTimeLimitReached);
         }
         
-        if (_options.MaxSegmentMessageCount > 0 && _writer.Header.MessageCount >= _options.MaxSegmentMessageCount) {
+        if (Options.MaxSegmentMessageCount > 0 && _writer.Header.MessageCount >= Options.MaxSegmentMessageCount) {
             // The current segment has reached the maximum message count.
             return (true, RolloverReason.SegmentMessageCountLimitReached);
         }
@@ -784,7 +714,7 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
         while (!cancellationToken.IsCancellationRequested) {
             try {
                 await Task.Delay(interval, cancellationToken).ConfigureAwait(false);
-                using var handle = await _writeLock.LockAsync(cancellationToken).ConfigureAwait(false);
+                using var handle = await WaitForWriteLockAsync(cancellationToken).ConfigureAwait(false);
                 LogCleanupRequested("scheduled");
                 await CleanupCoreAsync(cancellationToken).ConfigureAwait(false);
             }
@@ -816,13 +746,13 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
         
         var index = 0;
         
-        if (_options.SegmentRetentionLimit > 0 && segmentFiles.Length > _options.SegmentRetentionLimit) {
-            var filesToRemove = segmentFiles.Length - _options.SegmentRetentionLimit;
+        if (Options.SegmentRetentionLimit > 0 && segmentFiles.Length > Options.SegmentRetentionLimit) {
+            var filesToRemove = segmentFiles.Length - Options.SegmentRetentionLimit;
             for (; index < filesToRemove; index++) {
                 var file = segmentFiles[index];
                 
                 try {
-                    LogDeletingSegmentFileCountExceeded(file!.File.FullName, segmentFiles.Length, _options.SegmentRetentionLimit);
+                    LogDeletingSegmentFileCountExceeded(file!.File.FullName, segmentFiles.Length, Options.SegmentRetentionLimit);
                     file.File.Delete();
                     
                     var indexEntry = _readOnlySegmentIndices.FirstOrDefault(x => x.FilePath == file.File.FullName);
@@ -836,17 +766,17 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
             }
         }
 
-        if (_options.SegmentRetentionPeriod > TimeSpan.Zero) {
+        if (Options.SegmentRetentionPeriod > TimeSpan.Zero) {
             for (; index < segmentFiles.Length; index++) {
                 var file = segmentFiles[index];
 
                 var age = _timeProvider.GetUtcNow() - file!.OriginTime;
-                if (age <= _options.SegmentRetentionPeriod) {
+                if (age <= Options.SegmentRetentionPeriod) {
                     continue;
                 }
 
                 try {
-                    LogDeletingSegmentFileRetentionPeriodExceeded(file.File.FullName, age, _options.SegmentRetentionPeriod);
+                    LogDeletingSegmentFileRetentionPeriodExceeded(file.File.FullName, age, Options.SegmentRetentionPeriod);
                     file.File.Delete();
                     
                     var indexEntry = _readOnlySegmentIndices.FirstOrDefault(x => x.FilePath == file.File.FullName);
@@ -863,15 +793,13 @@ public sealed partial class FileWriteAheadLog : IWriteAheadLog {
     
     
     /// <inheritdoc />
-    public async ValueTask DisposeAsync() {
+    protected override async ValueTask DisposeAsyncCore() {
+        await base.DisposeAsyncCore().ConfigureAwait(false);
+        
         if (_disposed) {
             return;
         }
-
-        using var handle = await _writeLock.LockAsync().ConfigureAwait(false);
-
-        await _disposedTokenSource.CancelAsync().ConfigureAwait(false);
-
+        
         if (_writer is not null) {
             await _writer.DisposeAsync().ConfigureAwait(false);
             _writer = null;

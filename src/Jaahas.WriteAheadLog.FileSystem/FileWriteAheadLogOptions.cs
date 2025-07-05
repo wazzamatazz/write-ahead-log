@@ -3,7 +3,7 @@ namespace Jaahas.WriteAheadLog.FileSystem;
 /// <summary>
 /// Options for <see cref="FileWriteAheadLog"/>.
 /// </summary>
-public class FileWriteAheadLogOptions {
+public class FileWriteAheadLogOptions : WriteAheadLogOptions {
 
     /// <summary>
     /// The directory where the write-ahead log segments will be stored.

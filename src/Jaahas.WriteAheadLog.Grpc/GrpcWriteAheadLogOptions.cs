@@ -3,12 +3,12 @@ namespace Jaahas.WriteAheadLog.Grpc;
 /// <summary>
 /// Options for <see cref="GrpcWriteAheadLog"/>.
 /// </summary>
-public class GrpcWriteAheadLogOptions() {
+public class GrpcWriteAheadLogOptions : WriteAheadLogOptions {
 
     /// <summary>
     /// The name of the remote log to connect to.
     /// </summary>
-    public string? LogName { get; set; }
+    public string? RemoteLogName { get; set; }
     
     /// <summary>
     /// Specifies whether to use streaming writes for writing to the log.

@@ -5,29 +5,19 @@ using Google.Protobuf;
 
 using Grpc.Core;
 
-using Nito.AsyncEx;
-
 namespace Jaahas.WriteAheadLog.Grpc;
 
 /// <summary>
 /// <see cref="GrpcWriteAheadLog"/> is an <see cref="IWriteAheadLog"/> implementation that uses
 /// gRPC to communicate with a Write-Ahead Log (WAL) service.
 /// </summary>
-public sealed class GrpcWriteAheadLog : IWriteAheadLog {
+public sealed class GrpcWriteAheadLog : WriteAheadLog<GrpcWriteAheadLogOptions> {
 
     private bool _disposed;
     
     private readonly WriteAheadLog.WriteAheadLogClient _client;
-    
-    private readonly GrpcWriteAheadLogOptions _options;
-    
-    private readonly CancellationTokenSource _disposedTokenSource = new CancellationTokenSource();
 
     private bool _channelReady;
-    
-    private readonly AsyncLock _initLock = new AsyncLock();
-    
-    private readonly AsyncLock _writeLock = new AsyncLock();
     
     private AsyncDuplexStreamingCall<WriteToLogRequest, LogEntryPosition>? _writeStream;
 
@@ -44,30 +34,13 @@ public sealed class GrpcWriteAheadLog : IWriteAheadLog {
     /// <exception cref="ArgumentNullException">
     ///   <paramref name="client"/> is <see langword="null"/>.
     /// </exception>
-    public GrpcWriteAheadLog(WriteAheadLog.WriteAheadLogClient client, GrpcWriteAheadLogOptions? options = null) {
+    public GrpcWriteAheadLog(WriteAheadLog.WriteAheadLogClient client, GrpcWriteAheadLogOptions? options = null)
+        : base(options) {
         _client = client ?? throw new ArgumentNullException(nameof(client));
-        _options = options ?? new GrpcWriteAheadLogOptions();
     }
+    
 
-
-    /// <inheritdoc />
-    public async ValueTask InitAsync(CancellationToken cancellationToken = default) {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_disposedTokenSource.Token, cancellationToken);
-        await InitCoreAsync(cts.Token).ConfigureAwait(false);
-    }
-
-
-    private async ValueTask InitCoreAsync(CancellationToken cancellationToken) {
-        if (_channelReady) {
-            return;
-        }
-        
-        using var _ = await _initLock.LockAsync(cancellationToken).ConfigureAwait(false);
-        
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        
+    protected override async ValueTask InitCoreAsync(CancellationToken cancellationToken) {
         if (_channelReady) {
             return;
         }
@@ -96,31 +69,23 @@ public sealed class GrpcWriteAheadLog : IWriteAheadLog {
 
 
     /// <inheritdoc />
-    public async ValueTask<WriteResult> WriteAsync(ReadOnlySequence<byte> data, CancellationToken cancellationToken = default) {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_disposedTokenSource.Token, cancellationToken);
-        
-        await InitCoreAsync(cts.Token).ConfigureAwait(false);
-        
-        using var _ = await _writeLock.LockAsync(cts.Token).ConfigureAwait(false);
-
+    protected override async ValueTask<WriteResult> WriteCoreAsync(ReadOnlySequence<byte> data, CancellationToken cancellationToken) {
         var request = new WriteToLogRequest() {
-            LogName = _options.LogName ?? string.Empty, 
+            LogName = Options.RemoteLogName ?? string.Empty, 
             Data = FromReadOnlySequence(data)
         };
         
         LogEntryPosition result;
         
-        if (_options.UseStreamingWrites) {
-            _writeStream ??= _client.WriteStream(cancellationToken: _disposedTokenSource.Token);
-            await _writeStream.RequestStream.WriteAsync(request, cancellationToken: cts.Token).ConfigureAwait(false);
-            result = await _writeStream.ResponseStream.MoveNext(cancellationToken: cts.Token).ConfigureAwait(false)
+        if (Options.UseStreamingWrites) {
+            _writeStream ??= _client.WriteStream(cancellationToken: LifecycleToken);
+            await _writeStream.RequestStream.WriteAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
+            result = await _writeStream.ResponseStream.MoveNext(cancellationToken: cancellationToken).ConfigureAwait(false)
                 ? _writeStream.ResponseStream.Current
                 : throw new InvalidOperationException("No response received from the write stream.");
         }
         else {
-            result = await _client.WriteAsync(request, cancellationToken: cts.Token).ConfigureAwait(false);
+            result = await _client.WriteAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
 
         return new WriteResult(result.SequenceId, result.Timestamp);
@@ -171,15 +136,9 @@ public sealed class GrpcWriteAheadLog : IWriteAheadLog {
     
 
     /// <inheritdoc />
-    public async IAsyncEnumerable<Jaahas.WriteAheadLog.LogEntry> ReadAsync(LogReadOptions options, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(_disposedTokenSource.Token, cancellationToken);
-        
-        await InitCoreAsync(cts.Token).ConfigureAwait(false);
-        
+    protected override async IAsyncEnumerable<Jaahas.WriteAheadLog.LogEntry> ReadCoreAsync(LogReadOptions options, [EnumeratorCancellation] CancellationToken cancellationToken) {
         var request = new ReadFromLogRequest() {
-            LogName = _options.LogName ?? string.Empty,
+            LogName = Options.RemoteLogName ?? string.Empty,
             WatchForChanges = options.WatchForChanges
         };
 
@@ -197,22 +156,22 @@ public sealed class GrpcWriteAheadLog : IWriteAheadLog {
             request.Limit = options.Limit;
         }
         
-        var stream = _client.ReadStream(request, cancellationToken: cts.Token);
+        var stream = _client.ReadStream(request, cancellationToken: cancellationToken);
 
-        await foreach (var item in stream.ResponseStream.ReadAllAsync(cts.Token).ConfigureAwait(false)) {
+        await foreach (var item in stream.ResponseStream.ReadAllAsync(cancellationToken).ConfigureAwait(false)) {
             yield return Jaahas.WriteAheadLog.LogEntry.Create(item.Position.SequenceId, item.Position.Timestamp, item.Data.Span);
         }
     }
 
 
     /// <inheritdoc />
-    public async ValueTask DisposeAsync() {
+    protected override async ValueTask DisposeAsyncCore() {
+        await base.DisposeAsyncCore().ConfigureAwait(false);
+        
         if (_disposed) {
             return;
         }
-
-        await _disposedTokenSource.CancelAsync().ConfigureAwait(false);
-        _disposedTokenSource.Dispose();
+        
         _writeStream?.Dispose();
         
         _disposed = true;

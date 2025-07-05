@@ -61,6 +61,15 @@ public abstract class WriteAheadLog<TOptions> : IWriteAheadLog where TOptions : 
     }
 
 
+    /// <summary>
+    /// Ensures that the log is initialized.
+    /// </summary>
+    /// <param name="cancellationToken">
+    ///   The cancellation token for the operation.
+    /// </param>
+    /// <returns>
+    ///   A <see cref="ValueTask"/> that completes when the log is initialized.
+    /// </returns>
     protected async ValueTask EnsureInitializedAsync(CancellationToken cancellationToken) {
         if (Initialized) {
             return;
@@ -77,6 +86,15 @@ public abstract class WriteAheadLog<TOptions> : IWriteAheadLog where TOptions : 
     }
     
     
+    /// <summary>
+    /// Initializes the log.
+    /// </summary>
+    /// <param name="cancellationToken">
+    ///   The cancellation token for the operation.
+    /// </param>
+    /// <returns>
+    ///   A <see cref="ValueTask"/> that completes when the log is initialized.
+    /// </returns>
     protected abstract ValueTask InitCoreAsync(CancellationToken cancellationToken);
 
 
@@ -97,6 +115,35 @@ public abstract class WriteAheadLog<TOptions> : IWriteAheadLog where TOptions : 
     }
     
     
+    /// <summary>
+    /// Waits for the log's write lock to be available.
+    /// </summary>
+    /// <param name="cancellationToken">
+    ///   The cancellation token for the operation.
+    /// </param>
+    /// <returns>
+    ///   A <see cref="ValueTask{TResult}"/> that returns a handle to the write lock.
+    /// </returns>
+    /// <remarks>
+    ///   You must dispose of the returned <see cref="IDisposable"/> to release the write lock.
+    /// </remarks>
+    protected async ValueTask<IDisposable> WaitForWriteLockAsync(CancellationToken cancellationToken) {
+        return await _writeLock.LockAsync(cancellationToken).ConfigureAwait(false);
+    }
+    
+    
+    /// <summary>
+    /// Writes a log entry to the log.
+    /// </summary>
+    /// <param name="data">
+    ///   The log entry data to write.
+    /// </param>
+    /// <param name="cancellationToken">
+    ///   The cancellation token for the operation.
+    /// </param>
+    /// <returns>
+    ///   A <see cref="WriteResult"/> containing the sequence ID and timestamp of the written entry.
+    /// </returns>
     protected abstract ValueTask<WriteResult> WriteCoreAsync(ReadOnlySequence<byte> data, CancellationToken cancellationToken);
 
 
@@ -112,12 +159,22 @@ public abstract class WriteAheadLog<TOptions> : IWriteAheadLog where TOptions : 
     }
     
     
+    /// <summary>
+    /// Reads entries from the log based on the specified options.
+    /// </summary>
+    /// <param name="options">
+    ///   The options for reading from the log, such as sequence ID, timestamp range, and maximum
+    ///   number of entries.
+    /// </param>
+    /// <param name="cancellationToken">
+    ///   The cancellation token for the operation.
+    /// </param>
+    /// <returns>
+    ///   A stream of <see cref="LogEntry"/> objects read from the log. Ensure that you dispose of
+    ///   each <see cref="LogEntry"/> instance after use to ensure that underlying pooled resources
+    ///   are released.
+    /// </returns>
     protected abstract IAsyncEnumerable<LogEntry> ReadCoreAsync(LogReadOptions options, CancellationToken cancellationToken);
-
-    
-    protected async ValueTask<IDisposable> WaitForWriteLockAsync(CancellationToken cancellationToken) {
-        return await _writeLock.LockAsync(cancellationToken).ConfigureAwait(false);
-    }
     
 
     /// <inheritdoc />
@@ -133,6 +190,9 @@ public abstract class WriteAheadLog<TOptions> : IWriteAheadLog where TOptions : 
     }
 
 
+    /// <summary>
+    /// Asynchronously disposes of the log's resources.
+    /// </summary>
     protected virtual async ValueTask DisposeAsyncCore() {
         await _disposedTokenSource.CancelAsync().ConfigureAwait(false);
         _disposedTokenSource.Dispose();

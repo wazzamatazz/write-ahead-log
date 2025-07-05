@@ -1,7 +1,6 @@
 using Jaahas.WriteAheadLog.Grpc;
 
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 
 // ReSharper disable once CheckNamespace
 namespace Jaahas.WriteAheadLog.DependencyInjection;
@@ -17,14 +16,10 @@ public static class GrpcWriteAheadLogBuilderExtensions {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(configure);
         
-        builder.Services.AddOptions<GrpcWriteAheadLogOptions>(name)
-            .Configure(configure);
-        
-        return builder.AddLog<GrpcWriteAheadLog>(
+        return builder.AddLog<GrpcWriteAheadLog, GrpcWriteAheadLogOptions>(
             name, 
-            provider => ActivatorUtilities.CreateInstance<GrpcWriteAheadLog>(
-                provider, 
-                provider.GetRequiredService<IOptionsMonitor<GrpcWriteAheadLogOptions>>().Get(name)));
+            configure, 
+            (provider, options) => ActivatorUtilities.CreateInstance<GrpcWriteAheadLog>(provider, options));
     }
 
 }

@@ -55,10 +55,10 @@ public sealed partial class WriteAheadLogFactory : IAsyncDisposable {
     /// <exception cref="ObjectDisposedException">
     ///   The factory has been disposed.
     /// </exception>
-    public ICollection<string> GetNames() {
+    public ICollection<WriteAheadLogMetadata> GetDescriptors() {
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        return _registrations.Keys;
+        return _registrations.Values.Select(x => GetOrCreateWriteAheadLog(x)!.Metadata).ToList();
     }
 
 

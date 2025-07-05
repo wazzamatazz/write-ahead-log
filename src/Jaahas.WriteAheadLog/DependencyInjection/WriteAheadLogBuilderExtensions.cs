@@ -2,6 +2,7 @@ using Jaahas.WriteAheadLog.DependencyInjection.Internal;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
 
 namespace Jaahas.WriteAheadLog.DependencyInjection;
 
@@ -64,5 +65,52 @@ public static class WriteAheadLogBuilderExtensions {
         
         return builder;
     }
-    
+
+
+    /// <summary>
+    /// Adds a write-ahead log registration with options to the <see cref="IWriteAheadLogBuilder"/>.
+    /// </summary>
+    /// <param name="builder">
+    ///   The <see cref="IWriteAheadLogBuilder"/>.
+    /// </param>
+    /// <param name="name">
+    ///   The name of the log.
+    /// </param>
+    /// <param name="configureOptions">
+    ///   An action to configure the options for the write-ahead log.
+    /// </param>
+    /// <param name="implementationFactory">
+    ///   A factory function that creates an instance of the write-ahead log using the provided options.
+    /// </param>
+    /// <typeparam name="TImplementation">
+    ///   The type of the write-ahead log implementation.
+    /// </typeparam>
+    /// <typeparam name="TOptions">
+    ///   The type of the options for the write-ahead log.
+    /// </typeparam>
+    /// <returns>
+    ///   The <see cref="IWriteAheadLogBuilder"/>.
+    /// </returns>
+    public static IWriteAheadLogBuilder AddLog<TImplementation, TOptions>(
+        this IWriteAheadLogBuilder builder, 
+        string name, Action<TOptions> configureOptions, 
+        Func<IServiceProvider, TOptions, TImplementation> implementationFactory
+    ) where TOptions : WriteAheadLogOptions, new() where TImplementation : WriteAheadLog<TOptions> {
+        ArgumentNullException.ThrowIfNull(builder);
+        ArgumentNullException.ThrowIfNull(name);
+        ArgumentNullException.ThrowIfNull(configureOptions);
+        ArgumentNullException.ThrowIfNull(implementationFactory);
+        
+        builder.Services.AddOptions<TOptions>(name)
+            .Configure(configureOptions)
+            .AddDefaultPostConfigureOptions();
+        
+        return builder.AddLog<TImplementation>(
+            name,
+            provider => {
+                var options = provider.GetRequiredService<IOptionsMonitor<TOptions>>().Get(name);
+                return implementationFactory.Invoke(provider, options);
+            });
+    }
+
 }

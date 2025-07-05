@@ -25,10 +25,11 @@ public sealed partial class WriteAheadLogService : WriteAheadLog.WriteAheadLogBa
     public override Task<GetLogsResponse> List(GetLogsRequest request, ServerCallContext context) {
         var response = new GetLogsResponse();
 
-        foreach (var name in _walFactory.GetNames()) {
+        foreach (var descriptor in _walFactory.GetDescriptors()) {
             response.Logs.Add(new LogDescriptor() {
-                LogName = name
-                // TODO: other properties             
+                LogName = descriptor.Name,
+                Description = descriptor.Description ?? string.Empty,
+                MaximumMessageSize = descriptor.MaxEntryPayloadSize,
             });
         }
         

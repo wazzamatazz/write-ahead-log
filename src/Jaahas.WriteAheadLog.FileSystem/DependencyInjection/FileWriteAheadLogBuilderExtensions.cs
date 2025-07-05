@@ -1,7 +1,6 @@
 ﻿using Jaahas.WriteAheadLog.FileSystem;
 
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Options;
 
 // ReSharper disable once CheckNamespace
 namespace Jaahas.WriteAheadLog.DependencyInjection;
@@ -53,14 +52,10 @@ public static class FileWriteAheadLogBuilderExtensions {
         ArgumentNullException.ThrowIfNull(name);
         ArgumentNullException.ThrowIfNull(configure);
         
-        builder.Services.AddOptions<FileWriteAheadLogOptions>(name)
-            .Configure(configure);
-        
-        return builder.AddLog<FileWriteAheadLog>(
+        return builder.AddLog<FileWriteAheadLog, FileWriteAheadLogOptions>(
             name, 
-            provider => ActivatorUtilities.CreateInstance<FileWriteAheadLog>(
-                provider, 
-                provider.GetRequiredService<IOptionsMonitor<FileWriteAheadLogOptions>>().Get(name)));
+            configure, 
+            (provider, options) => ActivatorUtilities.CreateInstance<FileWriteAheadLog>(provider, options));
     }
 
 }

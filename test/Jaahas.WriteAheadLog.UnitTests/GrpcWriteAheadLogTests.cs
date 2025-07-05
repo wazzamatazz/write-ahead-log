@@ -287,7 +287,7 @@ public class GrpcWriteAheadLogTests {
         await using var wal = new GrpcClientNS.GrpcWriteAheadLog(
             client,
             new GrpcClientNS.GrpcWriteAheadLogOptions() {
-                LogName = TestContext.TestName!,
+                RemoteLogName = TestContext.TestName!,
                 UseStreamingWrites = false
             });
         
@@ -308,7 +308,7 @@ public class GrpcWriteAheadLogTests {
         await using var wal = new GrpcClientNS.GrpcWriteAheadLog(
             client,
             new GrpcClientNS.GrpcWriteAheadLogOptions() {
-                LogName = TestContext.TestName!,
+                RemoteLogName = TestContext.TestName!,
                 UseStreamingWrites = true
             });
         
@@ -327,7 +327,7 @@ public class GrpcWriteAheadLogTests {
         await using var wal = new GrpcClientNS.GrpcWriteAheadLog(
             client,
             new GrpcClientNS.GrpcWriteAheadLogOptions() {
-                LogName = TestContext.TestName!
+                RemoteLogName = TestContext.TestName!
             });
         
         var localWal = app.Services.GetRequiredKeyedService<IWriteAheadLog>(TestContext.TestName!);
@@ -369,7 +369,7 @@ public class GrpcWriteAheadLogTests {
         await using var wal = new GrpcClientNS.GrpcWriteAheadLog(
             client,
             new GrpcClientNS.GrpcWriteAheadLogOptions() {
-                LogName = TestContext.TestName!
+                RemoteLogName = TestContext.TestName!
             });
         
         var localWal = app.Services.GetRequiredKeyedService<IWriteAheadLog>(TestContext.TestName!);
@@ -411,7 +411,7 @@ public class GrpcWriteAheadLogTests {
         await using var wal = new GrpcClientNS.GrpcWriteAheadLog(
             client,
             new GrpcClientNS.GrpcWriteAheadLogOptions() {
-                LogName = TestContext.TestName!
+                RemoteLogName = TestContext.TestName!
             });
         
         var localWal = app.Services.GetRequiredKeyedService<IWriteAheadLog>(TestContext.TestName!);
@@ -453,7 +453,7 @@ public class GrpcWriteAheadLogTests {
         await using var wal = new GrpcClientNS.GrpcWriteAheadLog(
             client,
             new GrpcClientNS.GrpcWriteAheadLogOptions() {
-                LogName = TestContext.TestName!
+                RemoteLogName = TestContext.TestName!
             });
         
         var localWal = app.Services.GetRequiredKeyedService<IWriteAheadLog>(TestContext.TestName!);

@@ -49,13 +49,13 @@ When writing XML documentation comments, use newlines and white space to improve
 /// <returns>
 ///   A task that returns the data for the specified ID.
 /// </returns>
-/// <exception cref="InvalidOperationExcetion">
+/// <exception cref="InvalidOperationException">
 ///   The service has not been initialized.
 /// </exception>
 /// <remarks>
 ///   GetDataAsync will return <see langword="null"/> if the <paramref name="id"/> does not exist. 
 ///   Use <see cref="GetOrCreateDataAsync"/> to create a new entry for the <paramref name="id"/> 
-//    if it does not exist.
+///    if it does not exist.
 /// </remarks>
 public async Task<object?> GetDataAsync(int id, CancellationToken cancellationToken = default) {
     // ...

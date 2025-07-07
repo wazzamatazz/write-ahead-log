@@ -206,6 +206,9 @@ public sealed partial class LogReader : IAsyncDisposable {
             var skipEntryAtInitialPosition = !_skipInitialPositionCheck && (initialPosition.SequenceId.HasValue || initialPosition.Timestamp.HasValue);
             
             await foreach (var item in _log.ReadAsync(position: initialPosition, watchForChanges: true, cancellationToken: cancellationToken)) {
+                // Ensure that the log entry is always disposed after processing.
+                using var _ = item;
+                
                 try {
                     // Check for shutdown or stop before processing the entry
                     if (!CanContinueProcessing(cancellationToken)) {
@@ -266,7 +269,6 @@ public sealed partial class LogReader : IAsyncDisposable {
                             await _checkpointStore.SaveCheckpointAsync(_currentPosition, cancellationToken).ConfigureAwait(false);
                         }
                     }
-                    item.Dispose();
                 }
 
                 if (_running.IsSet) {

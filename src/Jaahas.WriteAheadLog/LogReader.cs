@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 using Microsoft.Extensions.Logging;
 
 using Nito.AsyncEx;
@@ -206,7 +208,7 @@ public sealed partial class LogReader : IAsyncDisposable {
             await foreach (var item in _log.ReadAsync(position: initialPosition, watchForChanges: true, cancellationToken: cancellationToken)) {
                 try {
                     // Check for shutdown or stop before processing the entry
-                    if (cancellationToken.IsCancellationRequested || !_running.IsSet) {
+                    if (!CanContinueProcessing(cancellationToken)) {
                         LogStoppedProcessingEntries();
                         _stopped.Set();
                         break;
@@ -254,7 +256,7 @@ public sealed partial class LogReader : IAsyncDisposable {
                 }
                 finally {
                     // Only update checkpoint if not shutting down
-                    if (!cancellationToken.IsCancellationRequested && _running.IsSet) {
+                    if (CanContinueProcessing(cancellationToken)) {
                         LogPosition newPosition = _currentPosition.Timestamp.HasValue
                             ? item.Timestamp
                             : item.SequenceId;
@@ -277,6 +279,10 @@ public sealed partial class LogReader : IAsyncDisposable {
             }
         }
     }
+    
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool CanContinueProcessing(CancellationToken cancellationToken) => !_disposed && _running.IsSet && !cancellationToken.IsCancellationRequested;
 
 
     /// <inheritdoc />

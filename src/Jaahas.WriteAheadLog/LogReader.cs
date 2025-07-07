@@ -205,6 +205,12 @@ public sealed partial class LogReader : IAsyncDisposable {
             
             await foreach (var item in _log.ReadAsync(position: initialPosition, watchForChanges: true, cancellationToken: cancellationToken)) {
                 try {
+                    // Check for shutdown or stop before processing the entry
+                    if (cancellationToken.IsCancellationRequested || !_running.IsSet) {
+                        LogStoppedProcessingEntries();
+                        _stopped.Set();
+                        break;
+                    }
                     if (skipEntryAtInitialPosition) {
                         skipEntryAtInitialPosition = false;
                         if ((initialPosition.SequenceId.HasValue && initialPosition.SequenceId.Value == item.SequenceId) ||
@@ -247,16 +253,18 @@ public sealed partial class LogReader : IAsyncDisposable {
                     }
                 }
                 finally {
-                    LogPosition newPosition = _currentPosition.Timestamp.HasValue
-                        ? item.Timestamp
-                        : item.SequenceId;
-                    
-                    item.Dispose();
-                    
-                    _currentPosition = newPosition;
-                    if (_checkpointStore is not null) {
-                        await _checkpointStore.SaveCheckpointAsync(_currentPosition, cancellationToken).ConfigureAwait(false);
+                    // Only update checkpoint if not shutting down
+                    if (!cancellationToken.IsCancellationRequested && _running.IsSet) {
+                        LogPosition newPosition = _currentPosition.Timestamp.HasValue
+                            ? item.Timestamp
+                            : item.SequenceId;
+                        
+                        _currentPosition = newPosition;
+                        if (_checkpointStore is not null) {
+                            await _checkpointStore.SaveCheckpointAsync(_currentPosition, cancellationToken).ConfigureAwait(false);
+                        }
                     }
+                    item.Dispose();
                 }
 
                 if (_running.IsSet) {

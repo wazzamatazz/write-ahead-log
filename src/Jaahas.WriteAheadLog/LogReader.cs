@@ -1,3 +1,5 @@
+using System.Runtime.CompilerServices;
+
 using Microsoft.Extensions.Logging;
 
 using Nito.AsyncEx;
@@ -204,7 +206,16 @@ public sealed partial class LogReader : IAsyncDisposable {
             var skipEntryAtInitialPosition = !_skipInitialPositionCheck && (initialPosition.SequenceId.HasValue || initialPosition.Timestamp.HasValue);
             
             await foreach (var item in _log.ReadAsync(position: initialPosition, watchForChanges: true, cancellationToken: cancellationToken)) {
+                // Ensure that the log entry is always disposed after processing.
+                using var _ = item;
+                
                 try {
+                    // Check for shutdown or stop before processing the entry
+                    if (!CanContinueProcessing(cancellationToken)) {
+                        LogStoppedProcessingEntries();
+                        _stopped.Set();
+                        break;
+                    }
                     if (skipEntryAtInitialPosition) {
                         skipEntryAtInitialPosition = false;
                         if ((initialPosition.SequenceId.HasValue && initialPosition.SequenceId.Value == item.SequenceId) ||
@@ -247,15 +258,16 @@ public sealed partial class LogReader : IAsyncDisposable {
                     }
                 }
                 finally {
-                    LogPosition newPosition = _currentPosition.Timestamp.HasValue
-                        ? item.Timestamp
-                        : item.SequenceId;
-                    
-                    item.Dispose();
-                    
-                    _currentPosition = newPosition;
-                    if (_checkpointStore is not null) {
-                        await _checkpointStore.SaveCheckpointAsync(_currentPosition, cancellationToken).ConfigureAwait(false);
+                    // Only update checkpoint if not shutting down
+                    if (CanContinueProcessing(cancellationToken)) {
+                        LogPosition newPosition = _currentPosition.Timestamp.HasValue
+                            ? item.Timestamp
+                            : item.SequenceId;
+                        
+                        _currentPosition = newPosition;
+                        if (_checkpointStore is not null) {
+                            await _checkpointStore.SaveCheckpointAsync(_currentPosition, cancellationToken).ConfigureAwait(false);
+                        }
                     }
                 }
 
@@ -269,6 +281,10 @@ public sealed partial class LogReader : IAsyncDisposable {
             }
         }
     }
+    
+    
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private bool CanContinueProcessing(CancellationToken cancellationToken) => !_disposed && _running.IsSet && !cancellationToken.IsCancellationRequested;
 
 
     /// <inheritdoc />

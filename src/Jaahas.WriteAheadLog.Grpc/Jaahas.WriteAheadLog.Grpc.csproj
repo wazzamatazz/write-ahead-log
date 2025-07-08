@@ -7,20 +7,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="Google.Protobuf" />
-        <PackageReference Include="Grpc.Net.Client" />
-        <PackageReference Include="Grpc.Tools">
-            <PrivateAssets>all</PrivateAssets>
-            <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-        </PackageReference>
-    </ItemGroup>
-
-    <ItemGroup>
         <ProjectReference Include="..\Jaahas.WriteAheadLog\Jaahas.WriteAheadLog.csproj" />
-    </ItemGroup>
-  
-    <ItemGroup>
-        <Protobuf Include="..\Jaahas.WriteAheadLog.Grpc.Server\Protos\**\*.proto" GrpcServices="Client" />
+        <ProjectReference Include="..\Jaahas.WriteAheadLog.Grpc.Client\Jaahas.WriteAheadLog.Grpc.Client.csproj" />
     </ItemGroup>
 
 </Project>

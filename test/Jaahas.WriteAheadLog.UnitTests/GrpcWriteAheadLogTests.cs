@@ -7,6 +7,7 @@ using Grpc.Net.Client;
 
 using Jaahas.WriteAheadLog.DependencyInjection;
 using Jaahas.WriteAheadLog.FileSystem;
+using Jaahas.WriteAheadLog.Grpc;
 
 using Microsoft.AspNetCore.Hosting.Server;
 using Microsoft.AspNetCore.TestHost;
@@ -284,9 +285,9 @@ public class GrpcWriteAheadLogTests {
     public async Task GrpcWriteAheadLogShouldWriteMessageAsUnary() {
         await using var app = await CreateWebApplicationAsync(TestContext);
         var client = CreateClient(app);
-        await using var wal = new GrpcClientNS.GrpcWriteAheadLog(
+        await using var wal = new GrpcWriteAheadLog(
             client,
-            new GrpcClientNS.GrpcWriteAheadLogOptions() {
+            new GrpcWriteAheadLogOptions() {
                 RemoteLogName = TestContext.TestName!,
                 UseStreamingWrites = false
             });
@@ -305,9 +306,9 @@ public class GrpcWriteAheadLogTests {
     public async Task GrpcWriteAheadLogShouldWriteMessagesAsStream() {
         await using var app = await CreateWebApplicationAsync(TestContext);
         var client = CreateClient(app);
-        await using var wal = new GrpcClientNS.GrpcWriteAheadLog(
+        await using var wal = new GrpcWriteAheadLog(
             client,
-            new GrpcClientNS.GrpcWriteAheadLogOptions() {
+            new GrpcWriteAheadLogOptions() {
                 RemoteLogName = TestContext.TestName!,
                 UseStreamingWrites = true
             });
@@ -324,9 +325,9 @@ public class GrpcWriteAheadLogTests {
     public async Task GrpcWriteAheadLogShouldReadAllMessages() {
         await using var app = await CreateWebApplicationAsync(TestContext);
         var client = CreateClient(app);
-        await using var wal = new GrpcClientNS.GrpcWriteAheadLog(
+        await using var wal = new GrpcWriteAheadLog(
             client,
-            new GrpcClientNS.GrpcWriteAheadLogOptions() {
+            new GrpcWriteAheadLogOptions() {
                 RemoteLogName = TestContext.TestName!
             });
         
@@ -366,9 +367,9 @@ public class GrpcWriteAheadLogTests {
     public async Task GrpcWriteAheadLogShouldReadMessagesFromSequenceId() {
         await using var app = await CreateWebApplicationAsync(TestContext);
         var client = CreateClient(app);
-        await using var wal = new GrpcClientNS.GrpcWriteAheadLog(
+        await using var wal = new GrpcWriteAheadLog(
             client,
-            new GrpcClientNS.GrpcWriteAheadLogOptions() {
+            new GrpcWriteAheadLogOptions() {
                 RemoteLogName = TestContext.TestName!
             });
         
@@ -408,9 +409,9 @@ public class GrpcWriteAheadLogTests {
     public async Task GrpcWriteAheadLogShouldReadMessagesFromTimestamp() {
         await using var app = await CreateWebApplicationAsync(TestContext);
         var client = CreateClient(app);
-        await using var wal = new GrpcClientNS.GrpcWriteAheadLog(
+        await using var wal = new GrpcWriteAheadLog(
             client,
-            new GrpcClientNS.GrpcWriteAheadLogOptions() {
+            new GrpcWriteAheadLogOptions() {
                 RemoteLogName = TestContext.TestName!
             });
         
@@ -450,9 +451,9 @@ public class GrpcWriteAheadLogTests {
     public async Task GrpcWriteAheadLogShouldWatchForNewMessages() {
         await using var app = await CreateWebApplicationAsync(TestContext);
         var client = CreateClient(app);
-        await using var wal = new GrpcClientNS.GrpcWriteAheadLog(
+        await using var wal = new GrpcWriteAheadLog(
             client,
-            new GrpcClientNS.GrpcWriteAheadLogOptions() {
+            new GrpcWriteAheadLogOptions() {
                 RemoteLogName = TestContext.TestName!
             });
         

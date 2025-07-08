@@ -19,7 +19,8 @@
 
     <ItemGroup>
       <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.FileSystem\Jaahas.WriteAheadLog.FileSystem.csproj" />
-      <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.Grpc\Jaahas.WriteAheadLog.Grpc.csproj" Aliases="grpcclient" />
+      <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.Grpc\Jaahas.WriteAheadLog.Grpc.csproj" />
+      <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.Grpc.Client\Jaahas.WriteAheadLog.Grpc.Client.csproj" Aliases="grpcclient" />
       <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.Grpc.Server\Jaahas.WriteAheadLog.Grpc.Server.csproj" Aliases="grpcserver" />
     </ItemGroup>
 

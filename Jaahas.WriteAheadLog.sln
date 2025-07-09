@@ -19,7 +19,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "common", "common", "{0390FA
 		Directory.Packages.props = Directory.Packages.props
 		LICENSE = LICENSE
 		README.md = README.md
-		AGENTS.md = AGENTS.md
 	EndProjectSection
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "test", "test", "{ADFADB4B-0729-40E6-B241-6E1B89A8731C}"

@@ -1,6 +1,6 @@
 # Jaahas.WriteAheadLog
 
-A .NET library for writing to a file-based write-ahead log (WAL).
+A set of .NET libraries for writing to file-based write-ahead logs (WALs).
 
 
 # Getting Started
@@ -9,7 +9,7 @@ You can register a file-based `IWriteAheadLog` service with your application's d
 
 ```csharp
 services.AddWriteAheadLogServices().AddFile(options => {
-    DataDirectory = "data/wal"
+    options.DataDirectory = "data/wal"
 });
 ```
 
@@ -27,10 +27,10 @@ You can register multiple named logs with different configurations as follows:
 ```csharp
 services.AddWriteAheadLogServices()
     .AddFile("file-1", options => {
-        DataDirectory = "data/wal-1"
+        options.DataDirectory = "data/wal-1";
     })
     .AddFile("file-2", options => {
-        DataDirectory = "data/wal-2"
+        options.DataDirectory = "data/wal-2";
     });
 ```
 
@@ -215,6 +215,95 @@ var options = new LogOptions() {
     SegmentRetentionPeriod = TimeSpan.FromDays(7),
     SegmentCleanupInterval = TimeSpan.FromHours(12)
 };
+```
+
+# gRPC Log Service
+
+Applications can host a gRPC write-ahead log service that other applications can write to and read from using the `Jaahas.WriteAheadLog.Grpc.Server` package:
+
+
+## Hosting the gRPC Log Service
+
+```csharp
+using Jaahas.WriteAheadLog.DependencyInjection;
+using Jaahas.WriteAheadLog.Grpc.Server;
+
+var builder = WebApplication.CreateBuilder(args);
+
+builder.Services.AddGrpc();
+
+builder.Services.AddWriteAheadLogServices()
+    .AddFile("file-hosted", options => {
+        options.DataDirectory = "data/wal";
+    });
+
+var app = builder.Build();
+
+app.MapGrpcService<WriteAheadLogService>();
+
+app.Run();
+```
+
+
+## Using to the gRPC Log Service
+
+To use the gRPC write-ahead log service, applications can do one of the following:
+
+1. Use the gRPC `IWriteAheadLog` implementation in the `Jaahas.WriteAheadLog.Grpc` package.
+2. Use the gRPC client in the `Jaahas.WriteAheadLog.Grpc.Client` package.
+3. Use the protobuf file in the `Jaahas.WriteAheadLog.Grpc.Server` project to create their own client using the protobuf compiler.
+
+
+### Using the gRPC `IWriteAheadLog` Implementation
+
+You can register the gRPC write-ahead log service as follows:
+
+```csharp
+using Jaahas.WriteAheadLog.DependencyInjection;
+using Jaahas.WriteAheadLog.Grpc;
+
+var builder = Host.CreateApplicationBuilder(args);
+
+builder.Services.AddGrpcClient<WriteAheadLog.WriteAheadLogClient>(options => {
+    options.Address = new Uri("https://localhost:7047");
+});
+
+builder.Services.AddWriteAheadLogServices()
+    .AddGrpc(options => {
+        options.RemoteLogName = "file-hosted";
+    });
+
+var host = builder.Build();
+host.Run();
+```
+
+You can then inject the `IWriteAheadLog` service into your components and use as normal.
+
+
+### Using the gRPC Client Library
+
+You can use the gRPC client library directly by adding the `Jaahas.WriteAheadLog.Grpc.Client` package to your project and registering the `WriteAheadLog.WriteAheadLogClient` gRPC client:
+
+```csharp
+using Jaahas.WriteAheadLog.Grpc;
+
+var builder = Host.CreateApplicationBuilder(args);
+
+builder.Services.AddGrpcClient<WriteAheadLog.WriteAheadLogClient>(options => {
+    options.Address = new Uri("https://localhost:7047");
+});
+
+var host = builder.Build();
+var client = host.Services.GetRequiredService<WriteAheadLog.WriteAheadLogClient>();
+
+var request = new WriteToLogRequest() {
+    // Specify "" when writing to an unnamed log
+    LogName = "file-hosted",
+    Data = ByteString.CopyFromUtf8("Hello, World!")
+};
+
+var response = await client.WriteAsync(request);
+Console.WroteLine($"Sequence ID: {response.SequenceId}");
 ```
 
 

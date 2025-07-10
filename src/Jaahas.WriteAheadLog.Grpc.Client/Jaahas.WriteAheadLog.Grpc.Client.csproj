@@ -5,11 +5,13 @@
     <LangVersion>latest</LangVersion>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <Description>gRPC write-ahead log client types</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Google.Protobuf" />
-    <PackageReference Include="Grpc.Net.Client" />
+    <PackageReference Include="Google.Protobuf"/>
+    <PackageReference Include="Grpc.Net.Client"/>
     <PackageReference Include="Grpc.Tools">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
@@ -17,7 +19,11 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Protobuf Include="..\Jaahas.WriteAheadLog.Grpc.Server\Protos\**\*.proto" GrpcServices="Client" />
+    <Protobuf Include="..\Jaahas.WriteAheadLog.Grpc.Server\Protos\**\*.proto" GrpcServices="Client"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\"/>
   </ItemGroup>
 
 </Project>

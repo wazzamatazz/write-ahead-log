@@ -31,7 +31,7 @@ public static class WriteAheadLogExtensions {
     
 
     /// <summary>
-    /// Reads log entries starting from a specific sequence ID.
+    /// Reads entries from the log.
     /// </summary>
     /// <param name="log">
     ///   The <see cref="IWriteAheadLog"/> to read from.

@@ -6,6 +6,8 @@
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <RootNamespace>Jaahas.WriteAheadLog</RootNamespace>
+    <Description>Base types for write-ahead logs</Description>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
   
   <ItemGroup>
@@ -20,6 +22,10 @@
   
   <ItemGroup>
     <ProjectReference Include="..\Jaahas.WriteAheadLog.Abstractions\Jaahas.WriteAheadLog.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\"/>
   </ItemGroup>
 
 </Project>

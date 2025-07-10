@@ -1,27 +1,27 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
-    <PropertyGroup>
-        <TargetFramework>net9.0</TargetFramework>
-        <LangVersion>latest</LangVersion>
-        <ImplicitUsings>enable</ImplicitUsings>
-        <Nullable>enable</Nullable>
-    </PropertyGroup>
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
 
-    <ItemGroup>
-        <PackageReference Include="Microsoft.AspNetCore.TestHost" />
-        <PackageReference Include="Microsoft.Extensions.Hosting" />
-        <PackageReference Include="MSTest"/>
-    </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.TestHost"/>
+    <PackageReference Include="Microsoft.Extensions.Hosting"/>
+    <PackageReference Include="MSTest"/>
+  </ItemGroup>
 
-    <ItemGroup>
-        <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting"/>
-    </ItemGroup>
+  <ItemGroup>
+    <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting"/>
+  </ItemGroup>
 
-    <ItemGroup>
-      <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.FileSystem\Jaahas.WriteAheadLog.FileSystem.csproj" />
-      <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.Grpc\Jaahas.WriteAheadLog.Grpc.csproj" />
-      <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.Grpc.Client\Jaahas.WriteAheadLog.Grpc.Client.csproj" Aliases="grpcclient" />
-      <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.Grpc.Server\Jaahas.WriteAheadLog.Grpc.Server.csproj" Aliases="grpcserver" />
-    </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.FileSystem\Jaahas.WriteAheadLog.FileSystem.csproj"/>
+    <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.Grpc\Jaahas.WriteAheadLog.Grpc.csproj"/>
+    <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.Grpc.Client\Jaahas.WriteAheadLog.Grpc.Client.csproj" Aliases="grpcclient"/>
+    <ProjectReference Include="..\..\src\Jaahas.WriteAheadLog.Grpc.Server\Jaahas.WriteAheadLog.Grpc.Server.csproj" Aliases="grpcserver"/>
+  </ItemGroup>
 
 </Project>

@@ -1,0 +1,35 @@
+﻿<Solution>
+  <Configurations>
+    <Platform Name="Any CPU" />
+    <Platform Name="x64" />
+    <Platform Name="x86" />
+  </Configurations>
+  <Folder Name="/build/">
+    <File Path="build/version.json" />
+  </Folder>
+  <Folder Name="/common/">
+    <File Path=".gitignore" />
+    <File Path="build.cake" />
+    <File Path="Directory.Build.props" />
+    <File Path="Directory.Build.targets" />
+    <File Path="Directory.Packages.props" />
+    <File Path="LICENSE" />
+    <File Path="README.md" />
+  </Folder>
+  <Folder Name="/samples/">
+    <Project Path="samples/GrpcLogClient/GrpcLogClient.csproj"/>
+    <Project Path="samples/GrpcLogServer/GrpcLogServer.csproj"/>
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Jaahas.WriteAheadLog.Abstractions/Jaahas.WriteAheadLog.Abstractions.csproj"/>
+    <Project Path="src/Jaahas.WriteAheadLog.FileSystem/Jaahas.WriteAheadLog.FileSystem.csproj"/>
+    <Project Path="src/Jaahas.WriteAheadLog.Grpc.Client/Jaahas.WriteAheadLog.Grpc.Client.csproj"/>
+    <Project Path="src/Jaahas.WriteAheadLog.Grpc.Server/Jaahas.WriteAheadLog.Grpc.Server.csproj"/>
+    <Project Path="src/Jaahas.WriteAheadLog.Grpc/Jaahas.WriteAheadLog.Grpc.csproj"/>
+    <Project Path="src/Jaahas.WriteAheadLog/Jaahas.WriteAheadLog.csproj"/>
+  </Folder>
+  <Folder Name="/test/">
+    <Project Path="test/Jaahas.WriteAheadLog.Benchmarks/Jaahas.WriteAheadLog.Benchmarks.csproj"/>
+    <Project Path="test/Jaahas.WriteAheadLog.UnitTests/Jaahas.WriteAheadLog.UnitTests.csproj"/>
+  </Folder>
+</Solution>

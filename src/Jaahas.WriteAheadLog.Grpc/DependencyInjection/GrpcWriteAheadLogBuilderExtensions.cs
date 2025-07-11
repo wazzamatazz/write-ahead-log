@@ -1,4 +1,5 @@
 using Jaahas.WriteAheadLog.Grpc;
+using Jaahas.WriteAheadLog.Internal;
 
 using Microsoft.Extensions.DependencyInjection;
 
@@ -12,9 +13,9 @@ public static class GrpcWriteAheadLogBuilderExtensions {
 
 
     public static IWriteAheadLogBuilder AddGrpc(this IWriteAheadLogBuilder builder, string name, Action<GrpcWriteAheadLogOptions> configure) {
-        ArgumentNullException.ThrowIfNull(builder);
-        ArgumentNullException.ThrowIfNull(name);
-        ArgumentNullException.ThrowIfNull(configure);
+        ExceptionHelper.ThrowIfNull(builder);
+        ExceptionHelper.ThrowIfNull(name);
+        ExceptionHelper.ThrowIfNull(configure);
         
         return builder.AddLog<GrpcWriteAheadLog, GrpcWriteAheadLogOptions>(
             name, 

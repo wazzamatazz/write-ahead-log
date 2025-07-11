@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.Json.Serialization.Metadata;
 
+using Jaahas.WriteAheadLog.Internal;
+
 namespace Jaahas.WriteAheadLog;
 
 /// <summary>
@@ -50,8 +52,8 @@ public sealed class JsonLogWriter : IDisposable, IAsyncDisposable {
     ///   <paramref name="log"/> is <see langword="null"/>.
     /// </exception>
     public async ValueTask<WriteResult> WriteToLogAsync<T>(IWriteAheadLog log, T data, JsonSerializerOptions? options = null) {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentNullException.ThrowIfNull(log);
+        ExceptionHelper.ThrowIfDisposed(_disposed, this);
+        ExceptionHelper.ThrowIfNull(log);
 
         try {
             JsonSerializer.Serialize(_jsonWriter, data, options);
@@ -92,9 +94,9 @@ public sealed class JsonLogWriter : IDisposable, IAsyncDisposable {
     ///   <paramref name="jsonTypeInfo"/> is <see langword="null"/>.
     /// </exception>
     public async ValueTask<WriteResult> WriteToLogAsync<T>(IWriteAheadLog log, T data, JsonTypeInfo<T> jsonTypeInfo) {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentNullException.ThrowIfNull(log);
-        ArgumentNullException.ThrowIfNull(jsonTypeInfo);
+        ExceptionHelper.ThrowIfDisposed(_disposed, this);
+        ExceptionHelper.ThrowIfNull(log);
+        ExceptionHelper.ThrowIfNull(jsonTypeInfo);
 
         try {
             JsonSerializer.Serialize(_jsonWriter, data, jsonTypeInfo);

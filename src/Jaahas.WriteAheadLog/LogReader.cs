@@ -1,5 +1,7 @@
 using System.Runtime.CompilerServices;
 
+using Jaahas.WriteAheadLog.Internal;
+
 using Microsoft.Extensions.Logging;
 
 using Nito.AsyncEx;
@@ -122,11 +124,11 @@ public sealed partial class LogReader : IAsyncDisposable {
     ///   The <see cref="LogReader"/> is already running.
     /// </exception>
     public async ValueTask StartAsync(LogReaderStartOptions options = default, CancellationToken cancellationToken = default) {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ExceptionHelper.ThrowIfDisposed(_disposed, this);
         
         using var _ = await _startLock.LockAsync(cancellationToken).ConfigureAwait(false);
         
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ExceptionHelper.ThrowIfDisposed(_disposed, this);
         if (_running.IsSet) {
             throw new InvalidOperationException("Log reader is already running.");
         }
@@ -176,10 +178,10 @@ public sealed partial class LogReader : IAsyncDisposable {
     ///   The <see cref="LogReader"/> has already been disposed.
     /// </exception>
     public async ValueTask StopAsync(CancellationToken cancellationToken = default) {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ExceptionHelper.ThrowIfDisposed(_disposed, this);
         
         using var _ = await _startLock.LockAsync(cancellationToken).ConfigureAwait(false);
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ExceptionHelper.ThrowIfDisposed(_disposed, this);
         
         _running.Reset();
         await _stopped.WaitAsync(cancellationToken).ConfigureAwait(false);

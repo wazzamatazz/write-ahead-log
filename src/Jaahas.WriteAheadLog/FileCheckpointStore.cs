@@ -1,6 +1,8 @@
 using System.Buffers.Binary;
 using System.IO.MemoryMappedFiles;
 
+using Jaahas.WriteAheadLog.Internal;
+
 using Nito.AsyncEx;
 
 namespace Jaahas.WriteAheadLog;
@@ -76,10 +78,10 @@ public sealed class FileCheckpointStore : ICheckpointStore, IAsyncDisposable {
 
     /// <inheritdoc />
     public async ValueTask SaveCheckpointAsync(LogPosition position, CancellationToken cancellationToken = default) {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ExceptionHelper.ThrowIfDisposed(_disposed, this);
         
         using var _ = await _lock.WriterLockAsync(cancellationToken).ConfigureAwait(false);
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ExceptionHelper.ThrowIfDisposed(_disposed, this);
         
         SaveCheckpoint(position);
     }
@@ -87,10 +89,10 @@ public sealed class FileCheckpointStore : ICheckpointStore, IAsyncDisposable {
 
     /// <inheritdoc />
     public async ValueTask<LogPosition> LoadCheckpointAsync(CancellationToken cancellationToken = default) {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ExceptionHelper.ThrowIfDisposed(_disposed, this);
         
         using var _ = await _lock.ReaderLockAsync(cancellationToken).ConfigureAwait(true);
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ExceptionHelper.ThrowIfDisposed(_disposed, this);
         
         return LoadCheckpoint();
     }
@@ -103,10 +105,10 @@ public sealed class FileCheckpointStore : ICheckpointStore, IAsyncDisposable {
     ///   The cancellation token for the operation.
     /// </param>
     public async ValueTask FlushAsync(CancellationToken cancellationToken = default) {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ExceptionHelper.ThrowIfDisposed(_disposed, this);
         
         using var _ = await _lock.WriterLockAsync(cancellationToken).ConfigureAwait(false);
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ExceptionHelper.ThrowIfDisposed(_disposed, this);
         
         FlushCore();
     }
@@ -119,7 +121,7 @@ public sealed class FileCheckpointStore : ICheckpointStore, IAsyncDisposable {
     ///   The cancellation token for the operation.
     /// </param>
     public async ValueTask WaitForFlushAsync(CancellationToken cancellationToken = default) {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ExceptionHelper.ThrowIfDisposed(_disposed, this);
         
         // Wait for the flush to complete
         await _flushCompleted.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -217,7 +219,7 @@ public sealed class FileCheckpointStore : ICheckpointStore, IAsyncDisposable {
         if (_disposed) {
             return;
         }
-
+        
         await _disposedTokenSource.CancelAsync().ConfigureAwait(false);
         using var _ = await _lock.WriterLockAsync().ConfigureAwait(false);
         FlushCore();

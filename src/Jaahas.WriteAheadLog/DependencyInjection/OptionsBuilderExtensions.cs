@@ -1,4 +1,5 @@
 using Jaahas.WriteAheadLog.DependencyInjection.Internal;
+using Jaahas.WriteAheadLog.Internal;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -27,7 +28,7 @@ public static class OptionsBuilderExtensions {
     public static OptionsBuilder<TOptions> AddDefaultPostConfigureOptions<TOptions>(
         this OptionsBuilder<TOptions> builder
     ) where TOptions : WriteAheadLogOptions, new() {
-        ArgumentNullException.ThrowIfNull(builder);
+        ExceptionHelper.ThrowIfNull(builder);
 
         builder.Services.TryAddEnumerable(ServiceDescriptor.Singleton<IPostConfigureOptions<TOptions>, WriteAheadLogPostConfigureOptions<TOptions>>());
         

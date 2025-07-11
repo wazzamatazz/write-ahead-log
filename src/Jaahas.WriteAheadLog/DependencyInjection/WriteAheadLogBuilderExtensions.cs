@@ -1,4 +1,5 @@
 using Jaahas.WriteAheadLog.DependencyInjection.Internal;
+using Jaahas.WriteAheadLog.Internal;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
@@ -23,7 +24,7 @@ public static class WriteAheadLogBuilderExtensions {
     public static IWriteAheadLogBuilder AddCoreServices(
         this IWriteAheadLogBuilder builder
     ) {
-        ArgumentNullException.ThrowIfNull(builder);
+        ExceptionHelper.ThrowIfNull(builder);
 
         builder.Services.TryAddSingleton(TimeProvider.System);
         builder.Services.TryAddSingleton<WriteAheadLogFactory>();
@@ -55,9 +56,9 @@ public static class WriteAheadLogBuilderExtensions {
         string name, 
         Func<IServiceProvider, TImplementation> implementationFactory
     ) where TImplementation : class, IWriteAheadLog {
-        ArgumentNullException.ThrowIfNull(builder);
-        ArgumentNullException.ThrowIfNull(name);
-        ArgumentNullException.ThrowIfNull(implementationFactory);
+        ExceptionHelper.ThrowIfNull(builder);
+        ExceptionHelper.ThrowIfNull(name);
+        ExceptionHelper.ThrowIfNull(implementationFactory);
 
         builder.Services.AddSingleton(new WriteAheadLogRegistration(name, implementationFactory));
         builder.Services.AddTransient<IWriteAheadLog>(provider => provider.GetRequiredService<WriteAheadLogFactory>().GetWriteAheadLog(name)!);
@@ -96,10 +97,10 @@ public static class WriteAheadLogBuilderExtensions {
         string name, Action<TOptions> configureOptions, 
         Func<IServiceProvider, TOptions, TImplementation> implementationFactory
     ) where TOptions : WriteAheadLogOptions, new() where TImplementation : WriteAheadLog<TOptions> {
-        ArgumentNullException.ThrowIfNull(builder);
-        ArgumentNullException.ThrowIfNull(name);
-        ArgumentNullException.ThrowIfNull(configureOptions);
-        ArgumentNullException.ThrowIfNull(implementationFactory);
+        ExceptionHelper.ThrowIfNull(builder);
+        ExceptionHelper.ThrowIfNull(name);
+        ExceptionHelper.ThrowIfNull(configureOptions);
+        ExceptionHelper.ThrowIfNull(implementationFactory);
         
         builder.Services.AddOptions<TOptions>(name)
             .Configure(configureOptions)

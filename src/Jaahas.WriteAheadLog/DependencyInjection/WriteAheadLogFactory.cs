@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 
 using Jaahas.WriteAheadLog.DependencyInjection.Internal;
+using Jaahas.WriteAheadLog.Internal;
 
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -32,7 +33,7 @@ public sealed partial class WriteAheadLogFactory : IAsyncDisposable {
     ///   The logger for the factory.
     /// </param>
     public WriteAheadLogFactory(IServiceProvider serviceProvider, ILogger<WriteAheadLogFactory>? logger = null) {
-        ArgumentNullException.ThrowIfNull(serviceProvider);
+        ExceptionHelper.ThrowIfNull(serviceProvider);
         _serviceScope = serviceProvider.CreateScope();
         _logger = logger ?? Microsoft.Extensions.Logging.Abstractions.NullLogger<WriteAheadLogFactory>.Instance;
         
@@ -56,7 +57,7 @@ public sealed partial class WriteAheadLogFactory : IAsyncDisposable {
     ///   The factory has been disposed.
     /// </exception>
     public ICollection<WriteAheadLogMetadata> GetDescriptors() {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ExceptionHelper.ThrowIfDisposed(_disposed, this);
 
         return _registrations.Values.Select(x => GetOrCreateWriteAheadLog(x)!.Metadata).ToList();
     }
@@ -78,8 +79,8 @@ public sealed partial class WriteAheadLogFactory : IAsyncDisposable {
     ///   <paramref name="name"/> is <see langword="null"/>.
     /// </exception>
     public IWriteAheadLog? GetWriteAheadLog(string name) {
-        ArgumentNullException.ThrowIfNull(name);
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ExceptionHelper.ThrowIfNull(name);
+        ExceptionHelper.ThrowIfDisposed(_disposed, this);
         
         return GetOrCreateWriteAheadLog(_registrations.GetValueOrDefault(name));
     }

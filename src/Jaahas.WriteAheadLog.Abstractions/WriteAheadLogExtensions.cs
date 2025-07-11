@@ -1,6 +1,8 @@
 using System.Buffers;
 using System.Runtime.CompilerServices;
 
+using Jaahas.WriteAheadLog.Internal;
+
 namespace Jaahas.WriteAheadLog;
 
 /// <summary>
@@ -25,7 +27,7 @@ public static class WriteAheadLogExtensions {
     ///   message.
     /// </returns>
     public static ValueTask<WriteResult> WriteAsync(this IWriteAheadLog log, ReadOnlyMemory<byte> data, CancellationToken cancellationToken = default) {
-        ArgumentNullException.ThrowIfNull(log);
+        ExceptionHelper.ThrowIfNull(log);
         return log.WriteAsync(new ReadOnlySequence<byte>(data), cancellationToken);
     }
     
@@ -54,7 +56,7 @@ public static class WriteAheadLogExtensions {
     ///   An asynchronous sequence of <see cref="LogEntry"/> instances read from the log.
     /// </returns>
     public static async IAsyncEnumerable<LogEntry> ReadAsync(this IWriteAheadLog log, LogPosition position = default, long limit = -1, bool watchForChanges = false, [EnumeratorCancellation] CancellationToken cancellationToken = default) {
-        ArgumentNullException.ThrowIfNull(log);
+        ExceptionHelper.ThrowIfNull(log);
         await foreach (var entry in log.ReadAsync(new LogReadOptions(Position: position, Limit: limit, WatchForChanges: watchForChanges), cancellationToken).ConfigureAwait(false)) {
             yield return entry;
         }

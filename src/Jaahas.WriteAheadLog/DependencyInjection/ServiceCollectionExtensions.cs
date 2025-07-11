@@ -1,4 +1,5 @@
 using Jaahas.WriteAheadLog.DependencyInjection.Internal;
+using Jaahas.WriteAheadLog.Internal;
 
 using Microsoft.Extensions.DependencyInjection;
 
@@ -20,7 +21,7 @@ public static class ServiceCollectionExtensions {
     ///   Write-Ahead Log services.
     /// </returns>
     public static IWriteAheadLogBuilder AddWriteAheadLogServices(this IServiceCollection services) {
-        ArgumentNullException.ThrowIfNull(services);
+        ExceptionHelper.ThrowIfNull(services);
         
         return new WriteAheadLogBuilder(services).AddCoreServices();
     }

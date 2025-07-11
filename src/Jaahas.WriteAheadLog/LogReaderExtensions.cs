@@ -1,3 +1,5 @@
+using Jaahas.WriteAheadLog.Internal;
+
 namespace Jaahas.WriteAheadLog;
 
 /// <summary>
@@ -24,7 +26,7 @@ public static class LogReaderExtensions {
     ///   would result in a method invocation that can never be cancelled.
     /// </exception>
     public static async Task RunAsync(this LogReader reader, CancellationToken cancellationToken) {
-        ArgumentNullException.ThrowIfNull(reader);
+        ExceptionHelper.ThrowIfNull(reader);
         if (cancellationToken == CancellationToken.None) {
             throw new ArgumentException("This method runs until cancellation is requested. CancellationToken.None cannot be used as this would result in a method invocation that could never return.", nameof(cancellationToken));
         }
@@ -63,7 +65,7 @@ public static class LogReaderExtensions {
     ///   would result in a method invocation that can never be cancelled.
     /// </exception>
     public static async Task RunAsync(this LogReader reader, LogReaderStartOptions options, CancellationToken cancellationToken) {
-        ArgumentNullException.ThrowIfNull(reader);
+        ExceptionHelper.ThrowIfNull(reader);
         if (cancellationToken == CancellationToken.None) {
             throw new ArgumentException("This method runs until cancellation is requested. CancellationToken.None cannot be used as this would result in a method invocation that could never return.", nameof(cancellationToken));
         }

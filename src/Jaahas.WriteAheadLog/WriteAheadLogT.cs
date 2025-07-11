@@ -1,6 +1,8 @@
 using System.Buffers;
 using System.Runtime.CompilerServices;
 
+using Jaahas.WriteAheadLog.Internal;
+
 namespace Jaahas.WriteAheadLog;
 
 /// <summary>
@@ -54,7 +56,7 @@ public abstract class WriteAheadLog<TOptions> : IWriteAheadLog where TOptions : 
 
     /// <inheritdoc />
     public async ValueTask InitAsync(CancellationToken cancellationToken = default) {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ExceptionHelper.ThrowIfDisposed(_disposed, this);
         
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(_disposedTokenSource.Token, cancellationToken);
         await EnsureInitializedAsync(cts.Token).ConfigureAwait(false);
@@ -100,7 +102,7 @@ public abstract class WriteAheadLog<TOptions> : IWriteAheadLog where TOptions : 
 
     /// <inheritdoc />
     public async ValueTask<WriteResult> WriteAsync(ReadOnlySequence<byte> data, CancellationToken cancellationToken = default) {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ExceptionHelper.ThrowIfDisposed(_disposed, this);
         if (Metadata.MaxEntryPayloadSize > 0 && data.Length > Metadata.MaxEntryPayloadSize) {
             throw new ArgumentException($"Log entry exceeds maximum size of {Metadata.MaxEntryPayloadSize} bytes.", nameof(data));
         }

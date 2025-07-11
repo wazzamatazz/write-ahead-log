@@ -19,8 +19,9 @@ public sealed class GrpcWriteAheadLog : WriteAheadLog<GrpcWriteAheadLogOptions> 
 
     private bool _channelReady;
     
+#if NETCOREAPP
     private AsyncDuplexStreamingCall<WriteToLogRequest, LogEntryPosition>? _writeStream;
-
+#endif
 
     /// <summary>
     /// Creates a new <see cref="GrpcWriteAheadLog"/> instance.
@@ -75,8 +76,9 @@ public sealed class GrpcWriteAheadLog : WriteAheadLog<GrpcWriteAheadLogOptions> 
             Data = FromReadOnlySequence(data)
         };
         
+#if NETCOREAPP
         LogEntryPosition result;
-        
+
         if (Options.UseStreamingWrites) {
             _writeStream ??= _client.WriteStream(cancellationToken: LifecycleToken);
             await _writeStream.RequestStream.WriteAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
@@ -87,6 +89,9 @@ public sealed class GrpcWriteAheadLog : WriteAheadLog<GrpcWriteAheadLogOptions> 
         else {
             result = await _client.WriteAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
         }
+#else
+        var result = await _client.WriteAsync(request, cancellationToken: cancellationToken).ConfigureAwait(false);
+#endif
 
         return new WriteResult(result.SequenceId, result.Timestamp);
     }
@@ -172,7 +177,9 @@ public sealed class GrpcWriteAheadLog : WriteAheadLog<GrpcWriteAheadLogOptions> 
             return;
         }
         
+#if NETCOREAPP
         _writeStream?.Dispose();
+#endif
         
         _disposed = true;
     }

@@ -1,10 +1,11 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net9.0</TargetFramework>
+    <TargetFrameworks>net9.0;netstandard2.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>latest</LangVersion>
     <RootNamespace>Jaahas.WriteAheadLog</RootNamespace>
     <Description>Base types for write-ahead logs</Description>
     <PackageReadmeFile>README.md</PackageReadmeFile>
@@ -14,10 +15,18 @@
     <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Hosting.Abstractions" />
     <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" />
-    
     <PackageReference Include="Microsoft.IO.RecyclableMemoryStream" />
     <PackageReference Include="Nito.AsyncEx.Coordination" />
     <PackageReference Include="System.IO.Hashing" />
+    <PackageReference Include="System.Text.Json" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <PackageReference Include="Microsoft.Bcl.TimeProvider" />
+    <PackageReference Include="PolySharp">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
   </ItemGroup>
   
   <ItemGroup>
@@ -26,6 +35,10 @@
 
   <ItemGroup>
     <None Include="README.md" Pack="true" PackagePath="\"/>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Shared\**\*.cs" LinkBase="Shared" />
   </ItemGroup>
 
 </Project>

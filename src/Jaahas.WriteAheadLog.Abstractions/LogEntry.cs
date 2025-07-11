@@ -1,5 +1,7 @@
 using System.Buffers;
 
+using Jaahas.WriteAheadLog.Internal;
+
 using Microsoft.Extensions.ObjectPool;
 
 namespace Jaahas.WriteAheadLog;
@@ -112,8 +114,8 @@ public class LogEntry : IDisposable {
     /// </param>
     /// <returns></returns>
     public static LogEntry Create(ulong sequenceId, long timestamp, byte[] buffer, int offset, int count, ArrayPool<byte>? bufferPool) {
-        ArgumentNullException.ThrowIfNull(buffer);
-        ArgumentNullException.ThrowIfNull(bufferPool);
+        ExceptionHelper.ThrowIfNull(buffer);
+        ExceptionHelper.ThrowIfNull(bufferPool);
         
         var entry = s_pool.Get();
         entry.Update(sequenceId, timestamp, buffer, offset, count, bufferPool);

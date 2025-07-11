@@ -10,6 +10,7 @@ public class GrpcWriteAheadLogOptions : WriteAheadLogOptions {
     /// </summary>
     public string? RemoteLogName { get; set; }
     
+#if NETCOREAPP
     /// <summary>
     /// Specifies whether to use streaming writes for writing to the log.
     /// </summary>
@@ -18,5 +19,6 @@ public class GrpcWriteAheadLogOptions : WriteAheadLogOptions {
     ///   writes use unary RPCs for each log entry.
     /// </remarks>
     public bool UseStreamingWrites { get; set; } = true;
-
+#endif
+    
 }

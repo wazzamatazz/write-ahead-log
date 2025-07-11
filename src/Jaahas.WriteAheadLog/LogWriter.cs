@@ -1,5 +1,7 @@
 using System.Buffers;
 
+using Jaahas.WriteAheadLog.Internal;
+
 using Microsoft.IO;
 
 namespace Jaahas.WriteAheadLog;
@@ -37,7 +39,7 @@ public sealed class LogWriter : IBufferWriter<byte>, IDisposable, IAsyncDisposab
     
     
     private RecyclableMemoryStream GetStream(int sizeHint) {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ExceptionHelper.ThrowIfDisposed(_disposed, this);
 
         return _stream ??= WriteAheadLogUtilities.RecyclableMemoryStreamManager.GetStream(
             id: Guid.NewGuid(),
@@ -70,8 +72,8 @@ public sealed class LogWriter : IBufferWriter<byte>, IDisposable, IAsyncDisposab
     ///   The <see cref="LogWriter"/> does not have any pending message data to publish.
     /// </exception>
     public async ValueTask<WriteResult> WriteToLogAsync(IWriteAheadLog log, CancellationToken cancellationToken = default) {
-        ObjectDisposedException.ThrowIf(_disposed, this);
-        ArgumentNullException.ThrowIfNull(log);
+        ExceptionHelper.ThrowIfDisposed(_disposed, this);
+        ExceptionHelper.ThrowIfNull(log);
         if (_stream == null) {
             throw new InvalidOperationException("No message data to publish.");
         }
@@ -106,7 +108,7 @@ public sealed class LogWriter : IBufferWriter<byte>, IDisposable, IAsyncDisposab
     ///   The instance has already been disposed.
     /// </exception>
     private void Reset() {
-        ObjectDisposedException.ThrowIf(_disposed, this);
+        ExceptionHelper.ThrowIfDisposed(_disposed, this);
         _stream?.Dispose();
         _stream = null;
     }

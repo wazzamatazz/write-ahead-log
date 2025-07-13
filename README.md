@@ -245,9 +245,9 @@ app.Run();
 ```
 
 
-## Using to the gRPC Log Service
+## Connecting to the gRPC Log Service
 
-To use the gRPC write-ahead log service, applications can do one of the following:
+To write to or read from the gRPC write-ahead log service, applications can do one of the following:
 
 1. Use the gRPC `IWriteAheadLog` implementation in the `Jaahas.WriteAheadLog.Grpc` package.
 2. Use the gRPC client in the `Jaahas.WriteAheadLog.Grpc.Client` package.
